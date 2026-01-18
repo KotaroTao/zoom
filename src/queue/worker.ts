@@ -11,7 +11,6 @@
 
 import * as fs from 'fs';
 import { Queue, Worker, Job } from 'bullmq';
-import IORedis from 'ioredis';
 import { config } from '../config/env.js';
 import { logger, stepLogger } from '../utils/logger.js';
 import { deleteFile } from '../utils/fileManager.js';
@@ -25,13 +24,13 @@ import { generateSummary } from '../services/summary/openai.js';
 import { appendRow } from '../services/sheets/client.js';
 import { createMeetingPage, isNotionEnabled } from '../services/notion/client.js';
 
-// Redis接続
-const connection = new IORedis({
+// Redis接続設定（ioredisインスタンスではなく設定オブジェクトを使用）
+const connection = {
   host: config.redis.host,
   port: config.redis.port,
   password: config.redis.password || undefined,
   maxRetriesPerRequest: null,
-});
+};
 
 // ジョブキュー
 const QUEUE_NAME = 'recording-processing';

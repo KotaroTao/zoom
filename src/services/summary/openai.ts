@@ -60,7 +60,7 @@ export async function generateSummary(
 
     // GPT-4で要約生成
     const response = await openai.chat.completions.create({
-      model: config.openai.model || 'gpt-4-turbo-preview',
+      model: config.openai.gptModel || 'gpt-4-turbo-preview',
       messages: [
         {
           role: 'system',
@@ -130,7 +130,7 @@ export async function generateStructuredSummary(
     const prompt = createStructuredSummaryPrompt(processedTranscript, options);
 
     const response = await openai.chat.completions.create({
-      model: config.openai.model || 'gpt-4-turbo-preview',
+      model: config.openai.gptModel || 'gpt-4-turbo-preview',
       messages: [
         {
           role: 'system',

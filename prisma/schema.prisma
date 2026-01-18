@@ -42,7 +42,7 @@ model Recording {
   notionPageId    String?  // Notion ページID
 
   // ステータス管理
-  status          Status   @default(PENDING)
+  status          String   @default("PENDING")  // PENDING, DOWNLOADING, UPLOADING, TRANSCRIBING, SUMMARIZING, SYNCING, COMPLETED, FAILED
   errorMessage    String?
 
   // 処理時刻
@@ -60,20 +60,6 @@ model Recording {
   @@index([clientName])
   @@index([status])
   @@index([meetingDate])
-}
-
-// -------------------------------------------
-// 処理ステータス
-// -------------------------------------------
-enum Status {
-  PENDING       // 処理待ち
-  DOWNLOADING   // Zoom録画ダウンロード中
-  UPLOADING     // YouTubeアップロード中
-  TRANSCRIBING  // 文字起こし中
-  SUMMARIZING   // 要約生成中
-  SYNCING       // Sheets/Notion同期中
-  COMPLETED     // 完了
-  FAILED        // 失敗
 }
 
 // -------------------------------------------

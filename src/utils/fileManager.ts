@@ -42,7 +42,7 @@ export async function ensureTempDir(): Promise<void> {
  * 一時ファイルを削除
  * @param filePath ファイルパス
  */
-export async function deleteTempFile(filePath: string): Promise<void> {
+export async function deleteFile(filePath: string): Promise<void> {
   try {
     await fs.unlink(filePath);
     logger.debug(`一時ファイル削除: ${filePath}`);

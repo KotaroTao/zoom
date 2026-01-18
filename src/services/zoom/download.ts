@@ -108,7 +108,7 @@ export async function downloadRecordingFile(
   target: DownloadTarget,
   outputDir?: string
 ): Promise<DownloadResult> {
-  const tempDir = outputDir || config.paths.temp;
+  const tempDir = outputDir || config.app.tempDir;
   const filePath = path.join(tempDir, target.fileName);
 
   logger.info('録画ダウンロード開始', {
@@ -233,7 +233,7 @@ export async function downloadWithProgress(
   target: DownloadTarget,
   onProgress?: (downloaded: number, total: number) => void
 ): Promise<DownloadResult> {
-  const filePath = path.join(config.paths.temp, target.fileName);
+  const filePath = path.join(config.app.tempDir, target.fileName);
 
   logger.info('録画ダウンロード開始（進捗追跡）', {
     fileName: target.fileName,
