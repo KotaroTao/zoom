@@ -1,8 +1,29 @@
+/**
+ * 録画処理ワーカー
+ *
+ * Zoom録画を順次処理:
+ * 1. ダウンロード
+ * 2. YouTubeアップロード
+ * 3. 文字起こし
+ * 4. 要約生成
+ * 5. Sheets/Notion同期
+ */
+
+import * as fs from 'fs';
 import { Queue, Worker, Job } from 'bullmq';
 import IORedis from 'ioredis';
 import { config } from '../config/env.js';
 import { logger, stepLogger } from '../utils/logger.js';
+import { deleteFile } from '../utils/fileManager.js';
 import type { ProcessingJob } from '../types/index.js';
+
+// サービスのインポート
+import { downloadRecordingFile } from '../services/zoom/download.js';
+import { uploadToYouTube } from '../services/youtube/upload.js';
+import { transcribeWithWhisper } from '../services/transcription/whisper.js';
+import { generateSummary } from '../services/summary/openai.js';
+import { appendRow } from '../services/sheets/client.js';
+import { createMeetingPage, isNotionEnabled } from '../services/notion/client.js';
 
 // Redis接続
 const connection = new IORedis({
@@ -59,55 +80,216 @@ export async function addProcessingJob(
  * 録画処理ワーカー
  */
 async function processRecording(job: Job<ProcessingJob>): Promise<void> {
-  const { recordingId, title, clientName, zoomMeetingId } = job.data;
+  const {
+    recordingId,
+    title,
+    clientName,
+    zoomMeetingId,
+    zoomUrl,
+    downloadUrl,
+    meetingDate,
+    duration,
+    hostEmail,
+  } = job.data;
 
   logger.info('='.repeat(40));
   logger.info(`録画処理開始: ${title}`);
   logger.info('='.repeat(40));
 
+  let downloadedFilePath: string | null = null;
+  let youtubeUrl: string | null = null;
+  let transcript: string | null = null;
+  let summary: string | null = null;
+
   try {
+    // ==============================
     // Step 1: Zoom録画ダウンロード
+    // ==============================
     stepLogger.start('DOWNLOAD', recordingId, { zoomMeetingId });
     await job.updateProgress(10);
-    // TODO: 実際のダウンロード処理
-    // const filePath = await downloadZoomRecording(job.data);
+
+    if (downloadUrl) {
+      const downloadResult = await downloadRecordingFile({
+        fileId: zoomMeetingId,
+        fileType: 'MP4',
+        recordingType: 'shared_screen_with_speaker_view',
+        downloadUrl,
+        fileSize: 0,
+        fileName: `${recordingId}.mp4`,
+      });
+
+      if (!downloadResult.success || !downloadResult.filePath) {
+        throw new Error(`ダウンロード失敗: ${downloadResult.error}`);
+      }
+
+      downloadedFilePath = downloadResult.filePath;
+      logger.info('ダウンロード完了', { filePath: downloadedFilePath });
+    } else {
+      logger.warn('ダウンロードURLがありません、スキップ');
+    }
+
     stepLogger.complete('DOWNLOAD', recordingId);
 
+    // ==============================
     // Step 2: YouTubeアップロード
+    // ==============================
     stepLogger.start('UPLOAD', recordingId);
     await job.updateProgress(30);
-    // TODO: 実際のアップロード処理
-    // const youtubeResult = await uploadToYouTube(filePath, title, clientName);
+
+    if (downloadedFilePath && fs.existsSync(downloadedFilePath)) {
+      const uploadResult = await uploadToYouTube(downloadedFilePath, {
+        title,
+        clientName: clientName || undefined,
+        zoomUrl,
+        meetingDate: meetingDate ? new Date(meetingDate) : undefined,
+        privacyStatus: 'unlisted',
+        tags: clientName ? [clientName, 'Zoom', '録画'] : ['Zoom', '録画'],
+      });
+
+      if (uploadResult.success && uploadResult.url) {
+        youtubeUrl = uploadResult.url;
+        logger.info('YouTubeアップロード完了', { youtubeUrl });
+      } else {
+        logger.error('YouTubeアップロード失敗', { error: uploadResult.error });
+      }
+    } else {
+      logger.warn('動画ファイルがないためYouTubeアップロードをスキップ');
+    }
+
     stepLogger.complete('UPLOAD', recordingId);
 
+    // ==============================
     // Step 3: 文字起こし
+    // ==============================
     stepLogger.start('TRANSCRIBE', recordingId);
     await job.updateProgress(50);
-    // TODO: 実際の文字起こし処理
-    // const transcript = await transcribeWithWhisper(filePath);
+
+    if (downloadedFilePath && fs.existsSync(downloadedFilePath)) {
+      const transcriptionResult = await transcribeWithWhisper(downloadedFilePath, {
+        language: 'ja',
+      });
+
+      if (transcriptionResult.success && transcriptionResult.text) {
+        transcript = transcriptionResult.text;
+        logger.info('文字起こし完了', {
+          textLength: transcript.length,
+          duration: transcriptionResult.duration,
+        });
+      } else {
+        logger.error('文字起こし失敗', { error: transcriptionResult.error });
+      }
+    } else {
+      logger.warn('動画ファイルがないため文字起こしをスキップ');
+    }
+
     stepLogger.complete('TRANSCRIBE', recordingId);
 
+    // ==============================
     // Step 4: 要約生成
+    // ==============================
     stepLogger.start('SUMMARIZE', recordingId);
     await job.updateProgress(70);
-    // TODO: 実際の要約処理
-    // const summary = await generateSummary(transcript);
+
+    if (transcript) {
+      const summaryResult = await generateSummary(transcript, {
+        clientName: clientName || undefined,
+        meetingTitle: title,
+        style: 'detailed',
+      });
+
+      if (summaryResult.success && summaryResult.summary) {
+        summary = summaryResult.summary;
+        logger.info('要約生成完了', { summaryLength: summary.length });
+      } else {
+        logger.error('要約生成失敗', { error: summaryResult.error });
+      }
+    } else {
+      logger.warn('文字起こしがないため要約生成をスキップ');
+    }
+
     stepLogger.complete('SUMMARIZE', recordingId);
 
-    // Step 5: Google Sheets/Notion同期
+    // ==============================
+    // Step 5: Google Sheets / Notion 同期
+    // ==============================
     stepLogger.start('SYNC', recordingId);
     await job.updateProgress(90);
-    // TODO: 実際の同期処理
-    // await syncToGoogleSheets(job.data, youtubeResult, summary);
-    // await syncToNotion(job.data, youtubeResult, summary);
+
+    // Google Sheets に追加
+    if (config.google.spreadsheetId) {
+      const sheetResult = await appendRow(config.google.spreadsheetId, {
+        title,
+        clientName,
+        meetingDate: meetingDate ? new Date(meetingDate) : new Date(),
+        youtubeUrl,
+        summary,
+        zoomUrl,
+        duration,
+        hostEmail,
+        processedAt: new Date(),
+      });
+
+      if (sheetResult.success) {
+        logger.info('Google Sheets追加完了', { rowNumber: sheetResult.rowNumber });
+      } else {
+        logger.error('Google Sheets追加失敗', { error: sheetResult.error });
+      }
+    }
+
+    // Notion に追加
+    if (isNotionEnabled()) {
+      const notionResult = await createMeetingPage({
+        title,
+        clientName,
+        meetingDate: meetingDate ? new Date(meetingDate) : new Date(),
+        youtubeUrl,
+        summary,
+        zoomUrl,
+        duration,
+        hostEmail,
+        status: 'completed',
+      });
+
+      if (notionResult.success) {
+        logger.info('Notionページ作成完了', { pageUrl: notionResult.pageUrl });
+      } else {
+        logger.error('Notionページ作成失敗', { error: notionResult.error });
+      }
+    }
+
     stepLogger.complete('SYNC', recordingId);
+
+    // ==============================
+    // Step 6: クリーンアップ
+    // ==============================
+    await job.updateProgress(95);
+
+    // ダウンロードした一時ファイルを削除
+    if (downloadedFilePath) {
+      await deleteFile(downloadedFilePath);
+      logger.debug('一時ファイル削除完了', { filePath: downloadedFilePath });
+    }
 
     // 完了
     await job.updateProgress(100);
-    logger.info('録画処理完了', { recordingId, title, clientName });
+    logger.info('='.repeat(40));
+    logger.info('録画処理完了', {
+      recordingId,
+      title,
+      clientName,
+      youtubeUrl,
+      hasSummary: !!summary,
+    });
+    logger.info('='.repeat(40));
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     logger.error('録画処理失敗', { recordingId, title, error: errorMessage });
+
+    // エラー時も一時ファイルを削除
+    if (downloadedFilePath) {
+      await deleteFile(downloadedFilePath).catch(() => {});
+    }
+
     throw error;
   }
 }
@@ -116,14 +298,10 @@ async function processRecording(job: Job<ProcessingJob>): Promise<void> {
  * ワーカー起動
  */
 export async function startWorker(): Promise<Worker<ProcessingJob>> {
-  const worker = new Worker<ProcessingJob>(
-    QUEUE_NAME,
-    processRecording,
-    {
-      connection,
-      concurrency: 1, // 同時処理数（リソース制限のため1に設定）
-    }
-  );
+  const worker = new Worker<ProcessingJob>(QUEUE_NAME, processRecording, {
+    connection,
+    concurrency: 1, // 同時処理数（リソース制限のため1に設定）
+  });
 
   worker.on('completed', (job) => {
     logger.info('ジョブ完了', { jobId: job.id, title: job.data.title });

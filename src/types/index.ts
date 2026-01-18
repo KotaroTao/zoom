@@ -50,13 +50,13 @@ export interface ZoomRecordingFile {
 export interface ProcessingJob {
   recordingId: string;
   zoomMeetingId: string;
-  zoomMeetingUuid: string;
+  zoomMeetingUuid?: string;
   title: string;
-  hostEmail: string;
-  duration: number;
-  meetingDate: Date;
+  hostEmail?: string;
+  duration: number | null;
+  meetingDate: string; // ISO文字列（シリアライズ対応）
   zoomUrl: string;
-  downloadUrl: string;
+  downloadUrl?: string;
   clientName: string | null;
 }
 
