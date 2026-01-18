@@ -1,0 +1,93 @@
+// ===========================================
+// Zoom YouTube Automation - Prisma Schema
+// ===========================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./data.db"
+}
+
+// -------------------------------------------
+// 録画レコード
+// -------------------------------------------
+model Recording {
+  id              String   @id @default(cuid())
+
+  // Zoom情報
+  zoomMeetingId   String   @unique
+  zoomMeetingUuid String?
+  title           String
+  hostEmail       String?
+  duration        Int?     // 分単位
+  meetingDate     DateTime
+  zoomUrl         String   // 元のZoom録画URL
+
+  // クライアント情報（タイトルから抽出）
+  clientName      String?
+
+  // YouTube情報
+  youtubeVideoId  String?
+  youtubeUrl      String?
+
+  // 処理結果
+  transcript      String?  // 文字起こし全文
+  summary         String?  // 要約テキスト
+
+  // 外部連携
+  sheetRowNumber  Int?     // Google Sheets の行番号
+  notionPageId    String?  // Notion ページID
+
+  // ステータス管理
+  status          String   @default("PENDING")  // PENDING, DOWNLOADING, UPLOADING, TRANSCRIBING, SUMMARIZING, SYNCING, COMPLETED, FAILED
+  errorMessage    String?
+
+  // 処理時刻
+  downloadedAt    DateTime?
+  uploadedAt      DateTime?
+  transcribedAt   DateTime?
+  summarizedAt    DateTime?
+  syncedAt        DateTime?
+
+  // メタ情報
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // インデックス
+  @@index([clientName])
+  @@index([status])
+  @@index([meetingDate])
+}
+
+// -------------------------------------------
+// クライアントマスタ（オプション）
+// -------------------------------------------
+model Client {
+  id          String   @id @default(cuid())
+  name        String   @unique  // クライアント名
+  description String?
+  color       String?  // ダッシュボード表示用カラー
+  isActive    Boolean  @default(true)
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// -------------------------------------------
+// 処理ログ
+// -------------------------------------------
+model ProcessLog {
+  id          String   @id @default(cuid())
+  recordingId String
+  step        String   // download, upload, transcribe, summarize, sync
+  status      String   // started, completed, failed
+  message     String?
+  duration    Int?     // 処理時間（ミリ秒）
+
+  createdAt   DateTime @default(now())
+
+  @@index([recordingId])
+}
