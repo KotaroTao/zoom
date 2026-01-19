@@ -12,7 +12,7 @@ const ADMIN_PASSWORD_HASH = process.env.ADMIN_PASSWORD_HASH;
 
 // デフォルトパスワード（開発用）: admin123
 // 本番環境では必ずADMIN_PASSWORD_HASHを環境変数で設定すること
-const DEFAULT_PASSWORD_HASH = '$2a$10$rQnM3TaXvVMrY1BVXC5B8.1k9gVJH5kHG.8dPdWqG9HzTqiCOKqYy';
+const DEFAULT_PASSWORD_HASH = '$2b$10$NdRvQ.IQ4u4hv4c0B1iGiuSjYWrd8hTFHb2PQE9DRlOzHB.ZhYRQW';
 
 export const authOptions: NextAuthOptions = {
   providers: [
