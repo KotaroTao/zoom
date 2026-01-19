@@ -2,7 +2,12 @@
  * Backend API Client
  */
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002';
+// 本番環境では /zoom/api、開発環境では http://localhost:3000
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || (
+  typeof window !== 'undefined' && window.location.pathname.startsWith('/zoom')
+    ? '/zoom/api'
+    : 'http://localhost:3000'
+);
 
 /**
  * APIリクエスト用ヘルパー
