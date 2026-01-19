@@ -54,10 +54,13 @@ export interface ProcessingJob {
   title: string;
   hostEmail?: string;
   duration: number | null;
-  meetingDate: string; // ISO文字列（シリアライズ対応）
+  meetingDate: string | Date; // ISO文字列またはDate（シリアライズ対応）
   zoomUrl: string;
   downloadUrl?: string;
   clientName: string | null;
+  // 再処理用フィールド
+  reprocess?: boolean;
+  reprocessSteps?: string[];
 }
 
 // -------------------------------------------

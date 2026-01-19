@@ -1,12 +1,24 @@
 import express, { Express, Request, Response, NextFunction } from 'express';
+import cors from 'cors';
 import { logger } from '../utils/logger.js';
 import { webhookRouter } from './routes/webhook.js';
+import { apiRouter } from './routes/api.js';
 
 /**
  * Express アプリケーション作成
  */
 export function createApp(): Express {
   const app = express();
+
+  // CORS設定（ダッシュボードからのアクセスを許可）
+  app.use(cors({
+    origin: [
+      'http://localhost:3001',
+      'http://localhost:3000',
+      'https://tao-dx.com',
+    ],
+    credentials: true,
+  }));
 
   // JSONパーサー（Webhook署名検証のためraw bodyも保持）
   app.use(
@@ -51,15 +63,7 @@ export function createApp(): Express {
   });
 
   // API ルート（ダッシュボード用）
-  app.get('/api/recordings', async (_req: Request, res: Response) => {
-    // TODO: 録画一覧を返す
-    res.json({ recordings: [] });
-  });
-
-  app.get('/api/clients', async (_req: Request, res: Response) => {
-    // TODO: クライアント一覧を返す
-    res.json({ clients: [] });
-  });
+  app.use('/api', apiRouter);
 
   // 404 ハンドラ
   app.use((_req: Request, res: Response) => {

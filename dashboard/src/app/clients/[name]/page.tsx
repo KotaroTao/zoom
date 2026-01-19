@@ -1,6 +1,6 @@
 'use client';
 
-import { useParams } from 'next/navigation';
+import { useState, useEffect, use } from 'react';
 import Link from 'next/link';
 import { format } from 'date-fns';
 import { ja } from 'date-fns/locale';
@@ -12,58 +12,75 @@ import {
   ExternalLink,
   FileText,
   Play,
+  Loader2,
+  AlertCircle,
+  CheckCircle,
 } from 'lucide-react';
 import { StatusBadge } from '@/components/StatusBadge';
+import { getClient, type Recording } from '@/lib/api';
 
-interface Recording {
-  id: string;
-  title: string;
-  meetingDate: string;
-  youtubeUrl: string | null;
-  summary: string | null;
-  status: string;
-  duration: number | null;
+interface ClientDetailPageProps {
+  params: Promise<{ name: string }>;
 }
 
-// モックデータ
-const mockRecordings: Recording[] = [
-  {
-    id: '1',
-    title: '【ABC商事】定例MTG - 1月第3週',
-    meetingDate: '2024-01-15T14:00:00Z',
-    youtubeUrl: 'https://youtube.com/watch?v=xxx',
-    summary: '## 概要\n今週の進捗確認と次週の計画について議論。\n\n## 主な議論\n- プロジェクトAの進捗は予定通り\n- 新規案件の見積もり依頼あり\n\n## アクションアイテム\n- [ ] 見積もり作成（田中、1/18まで）',
-    status: 'COMPLETED',
-    duration: 45,
-  },
-  {
-    id: '2',
-    title: '【ABC商事】定例MTG - 1月第2週',
-    meetingDate: '2024-01-08T14:00:00Z',
-    youtubeUrl: 'https://youtube.com/watch?v=yyy',
-    summary: '## 概要\n年始挨拶と今年の計画について。\n\n## 主な議論\n- 2024年の予算計画\n- 新システム導入の検討',
-    status: 'COMPLETED',
-    duration: 60,
-  },
-  {
-    id: '3',
-    title: '【ABC商事】緊急MTG',
-    meetingDate: '2024-01-05T10:00:00Z',
-    youtubeUrl: 'https://youtube.com/watch?v=zzz',
-    summary: null,
-    status: 'TRANSCRIBING',
-    duration: 30,
-  },
-];
+export default function ClientPage({ params }: ClientDetailPageProps) {
+  const { name } = use(params);
+  const clientName = decodeURIComponent(name);
 
-export default function ClientPage() {
-  const params = useParams();
-  const clientName = decodeURIComponent(params.name as string);
+  const [recordings, setRecordings] = useState<Recording[]>([]);
+  const [stats, setStats] = useState({
+    recordingCount: 0,
+    totalDuration: 0,
+    completedCount: 0,
+  });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  // 統計を計算
-  const totalRecordings = mockRecordings.length;
-  const totalDuration = mockRecordings.reduce((acc, r) => acc + (r.duration || 0), 0);
-  const lastMeeting = mockRecordings[0]?.meetingDate;
+  useEffect(() => {
+    const fetchClient = async () => {
+      try {
+        setLoading(true);
+        const data = await getClient(clientName);
+        setRecordings(data.recordings);
+        setStats(data.stats);
+        setError(null);
+      } catch (err) {
+        console.error('Failed to fetch client:', err);
+        setError(err instanceof Error ? err.message : 'Failed to fetch client');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchClient();
+  }, [clientName]);
+
+  if (loading) {
+    return (
+      <div className="p-6 flex items-center justify-center min-h-[400px]">
+        <Loader2 className="h-8 w-8 text-gray-400 animate-spin" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="p-6">
+        <div className="card bg-red-50 border-red-200">
+          <div className="card-body text-red-700 flex items-center">
+            <AlertCircle className="h-5 w-5 mr-2" />
+            {error}
+          </div>
+        </div>
+        <Link href="/clients" className="mt-4 inline-flex items-center text-primary-600 hover:text-primary-700">
+          <ArrowLeft className="h-4 w-4 mr-1" />
+          クライアント一覧に戻る
+        </Link>
+      </div>
+    );
+  }
+
+  const lastMeeting = recordings[0]?.meetingDate;
 
   return (
     <div className="p-6">
@@ -81,7 +98,7 @@ export default function ClientPage() {
       </div>
 
       {/* 統計 */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
         <div className="card">
           <div className="card-body flex items-center">
             <div className="p-2 bg-blue-50 rounded-lg mr-3">
@@ -89,7 +106,7 @@ export default function ClientPage() {
             </div>
             <div>
               <p className="text-sm text-gray-500">録画数</p>
-              <p className="text-xl font-bold text-gray-900">{totalRecordings}件</p>
+              <p className="text-xl font-bold text-gray-900">{stats.recordingCount}件</p>
             </div>
           </div>
         </div>
@@ -100,14 +117,25 @@ export default function ClientPage() {
             </div>
             <div>
               <p className="text-sm text-gray-500">総時間</p>
-              <p className="text-xl font-bold text-gray-900">{totalDuration}分</p>
+              <p className="text-xl font-bold text-gray-900">{stats.totalDuration}分</p>
             </div>
           </div>
         </div>
         <div className="card">
           <div className="card-body flex items-center">
             <div className="p-2 bg-green-50 rounded-lg mr-3">
-              <Calendar className="h-5 w-5 text-green-600" />
+              <CheckCircle className="h-5 w-5 text-green-600" />
+            </div>
+            <div>
+              <p className="text-sm text-gray-500">完了</p>
+              <p className="text-xl font-bold text-gray-900">{stats.completedCount}件</p>
+            </div>
+          </div>
+        </div>
+        <div className="card">
+          <div className="card-body flex items-center">
+            <div className="p-2 bg-orange-50 rounded-lg mr-3">
+              <Calendar className="h-5 w-5 text-orange-600" />
             </div>
             <div>
               <p className="text-sm text-gray-500">最終MTG</p>
@@ -126,64 +154,63 @@ export default function ClientPage() {
         <div className="card-header">
           <h2 className="text-lg font-semibold text-gray-900">ミーティング履歴</h2>
         </div>
-        <div className="divide-y divide-gray-200">
-          {mockRecordings.map((recording) => (
-            <div key={recording.id} className="p-4 hover:bg-gray-50">
-              <div className="flex items-start justify-between">
-                <div className="flex-1">
-                  <div className="flex items-center">
-                    <Play className="h-4 w-4 text-gray-400 mr-2" />
-                    <h3 className="text-sm font-medium text-gray-900">
-                      {recording.title}
-                    </h3>
-                    <StatusBadge status={recording.status} />
-                  </div>
-                  <div className="mt-1 flex items-center text-sm text-gray-500">
-                    <Calendar className="h-4 w-4 mr-1" />
-                    {format(new Date(recording.meetingDate), 'yyyy/M/d HH:mm', {
-                      locale: ja,
-                    })}
-                    <span className="mx-2">•</span>
-                    <Clock className="h-4 w-4 mr-1" />
-                    {recording.duration}分
-                  </div>
-
-                  {/* 要約プレビュー */}
-                  {recording.summary && (
-                    <div className="mt-3 p-3 bg-gray-50 rounded-lg">
-                      <p className="text-sm text-gray-600 line-clamp-3 whitespace-pre-wrap">
-                        {recording.summary.substring(0, 200)}...
-                      </p>
+        {recordings.length === 0 ? (
+          <div className="p-8 text-center text-gray-500">
+            録画がありません
+          </div>
+        ) : (
+          <div className="divide-y divide-gray-200">
+            {recordings.map((recording) => (
+              <div key={recording.id} className="p-4 hover:bg-gray-50">
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <Play className="h-4 w-4 text-gray-400" />
+                      <Link
+                        href={`/recordings/${recording.id}`}
+                        className="text-sm font-medium text-gray-900 hover:text-primary-600"
+                      >
+                        {recording.title}
+                      </Link>
+                      <StatusBadge status={recording.status} />
                     </div>
-                  )}
-                </div>
+                    <div className="mt-1 flex items-center text-sm text-gray-500">
+                      <Calendar className="h-4 w-4 mr-1" />
+                      {format(new Date(recording.meetingDate), 'yyyy/M/d HH:mm', {
+                        locale: ja,
+                      })}
+                      <span className="mx-2">・</span>
+                      <Clock className="h-4 w-4 mr-1" />
+                      {recording.duration ? `${recording.duration}分` : '-'}
+                    </div>
+                  </div>
 
-                {/* アクション */}
-                <div className="flex items-center space-x-2 ml-4">
-                  {recording.youtubeUrl && (
-                    <a
-                      href={recording.youtubeUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="p-2 text-gray-400 hover:text-red-500 hover:bg-gray-100 rounded-lg"
-                      title="YouTubeで見る"
-                    >
-                      <ExternalLink className="h-5 w-5" />
-                    </a>
-                  )}
-                  {recording.summary && (
-                    <button
+                  {/* アクション */}
+                  <div className="flex items-center space-x-2 ml-4">
+                    {recording.youtubeUrl && (
+                      <a
+                        href={recording.youtubeUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="p-2 text-gray-400 hover:text-red-500 hover:bg-gray-100 rounded-lg"
+                        title="YouTubeで見る"
+                      >
+                        <ExternalLink className="h-5 w-5" />
+                      </a>
+                    )}
+                    <Link
+                      href={`/recordings/${recording.id}`}
                       className="p-2 text-gray-400 hover:text-primary-600 hover:bg-gray-100 rounded-lg"
-                      title="要約を表示"
+                      title="詳細を表示"
                     >
                       <FileText className="h-5 w-5" />
-                    </button>
-                  )}
+                    </Link>
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

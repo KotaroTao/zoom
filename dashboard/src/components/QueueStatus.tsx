@@ -1,36 +1,60 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Loader2, CheckCircle, Clock, AlertCircle } from 'lucide-react';
-
-interface QueueStats {
-  waiting: number;
-  active: number;
-  completed: number;
-  failed: number;
-}
+import { Loader2, CheckCircle, Clock, AlertCircle, RefreshCw } from 'lucide-react';
+import { getQueueStatus } from '@/lib/api';
 
 export function QueueStatus() {
-  const [stats, setStats] = useState<QueueStats>({
-    waiting: 2,
-    active: 1,
-    completed: 21,
+  const [stats, setStats] = useState({
+    waiting: 0,
+    active: 0,
+    completed: 0,
     failed: 0,
   });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  // 実際はAPIから取得
-  // useEffect(() => {
-  //   fetch('/api/queue/status')
-  //     .then(res => res.json())
-  //     .then(setStats);
-  // }, []);
+  const fetchQueueStatus = async () => {
+    try {
+      const data = await getQueueStatus();
+      setStats(data.counts);
+      setError(null);
+    } catch (err) {
+      console.error('Failed to fetch queue status:', err);
+      setError(err instanceof Error ? err.message : 'Failed to fetch queue status');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchQueueStatus();
+    // 10秒ごとに更新
+    const interval = setInterval(fetchQueueStatus, 10000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const total = stats.waiting + stats.active + stats.completed + stats.failed;
+  const completionRate = total > 0 ? Math.round((stats.completed / total) * 100) : 0;
 
   return (
     <div className="card">
-      <div className="card-header">
+      <div className="card-header flex items-center justify-between">
         <h2 className="text-lg font-semibold text-gray-900">処理キュー</h2>
+        <button
+          onClick={fetchQueueStatus}
+          disabled={loading}
+          className="p-1 text-gray-400 hover:text-gray-600 disabled:opacity-50"
+          title="更新"
+        >
+          <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+        </button>
       </div>
       <div className="card-body">
+        {error && (
+          <div className="text-red-600 text-sm mb-4">{error}</div>
+        )}
+
         <div className="space-y-4">
           {/* 処理中 */}
           {stats.active > 0 && (
@@ -82,28 +106,19 @@ export function QueueStatus() {
         </div>
 
         {/* プログレスバー */}
-        <div className="mt-4">
-          <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
-            <div
-              className="h-full bg-green-500 transition-all duration-500"
-              style={{
-                width: `${
-                  (stats.completed /
-                    (stats.waiting + stats.active + stats.completed + stats.failed)) *
-                  100
-                }%`,
-              }}
-            />
+        {total > 0 && (
+          <div className="mt-4">
+            <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-green-500 transition-all duration-500"
+                style={{ width: `${completionRate}%` }}
+              />
+            </div>
+            <p className="text-xs text-gray-500 mt-1 text-center">
+              {completionRate}% 完了
+            </p>
           </div>
-          <p className="text-xs text-gray-500 mt-1 text-center">
-            {Math.round(
-              (stats.completed /
-                (stats.waiting + stats.active + stats.completed + stats.failed)) *
-                100
-            )}
-            % 完了
-          </p>
-        </div>
+        )}
       </div>
     </div>
   );
