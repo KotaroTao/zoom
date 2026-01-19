@@ -7,12 +7,12 @@ import CredentialsProvider from 'next-auth/providers/credentials';
 import bcrypt from 'bcryptjs';
 
 // 環境変数から管理者認証情報を取得
-const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'admin@example.com';
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'mail@function-t.com';
 const ADMIN_PASSWORD_HASH = process.env.ADMIN_PASSWORD_HASH;
 
-// デフォルトパスワード（開発用）: admin123
+// デフォルトパスワード: MUNP1687
 // 本番環境では必ずADMIN_PASSWORD_HASHを環境変数で設定すること
-const DEFAULT_PASSWORD_HASH = '$2b$10$NdRvQ.IQ4u4hv4c0B1iGiuSjYWrd8hTFHb2PQE9DRlOzHB.ZhYRQW';
+const DEFAULT_PASSWORD_HASH = '$2b$10$Byky4nH6dcljde5Vww4d7ONdGKQu/IOqdALMO5En2fWqdKNLrMPfW';
 
 export const authOptions: NextAuthOptions = {
   providers: [
