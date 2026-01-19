@@ -55,8 +55,8 @@ export const authOptions: NextAuthOptions = {
     maxAge: 24 * 60 * 60, // 24時間
   },
   pages: {
-    signIn: '/login',
-    error: '/login',
+    signIn: '/zoom/login',
+    error: '/zoom/login',
   },
   callbacks: {
     async jwt({ token, user }) {
