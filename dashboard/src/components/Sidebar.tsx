@@ -9,6 +9,7 @@ import {
   Settings,
   BarChart3,
   RefreshCw,
+  HelpCircle,
 } from 'lucide-react';
 
 const navigation = [
@@ -17,6 +18,7 @@ const navigation = [
   { name: 'クライアント', href: '/clients', icon: Users },
   { name: '統計', href: '/stats', icon: BarChart3 },
   { name: '設定', href: '/settings', icon: Settings },
+  { name: 'セットアップ', href: '/setup', icon: HelpCircle },
 ];
 
 export function Sidebar() {
