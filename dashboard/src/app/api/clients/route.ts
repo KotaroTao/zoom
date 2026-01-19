@@ -1,0 +1,48 @@
+/**
+ * クライアント一覧API（テナント分離対応）
+ */
+
+import { NextResponse } from 'next/server';
+import { prisma } from '@/lib/db';
+import { getAuthContext, unauthorizedResponse } from '@/lib/api-auth';
+
+export async function GET() {
+  const auth = await getAuthContext();
+  if (!auth) {
+    return unauthorizedResponse();
+  }
+
+  try {
+    const { organizationId } = auth;
+
+    // 録画からユニークなクライアント名を集計
+    const clientStats = await prisma.recording.groupBy({
+      by: ['clientName'],
+      where: {
+        organizationId,
+        clientName: { not: null },
+      },
+      _count: { id: true },
+      _sum: { duration: true },
+      _max: { meetingDate: true },
+    });
+
+    const clients = clientStats.map((stat) => ({
+      name: stat.clientName,
+      recordingCount: stat._count.id,
+      totalDuration: stat._sum.duration || 0,
+      lastMeetingDate: stat._max.meetingDate,
+    }));
+
+    // 録画数で降順ソート
+    clients.sort((a, b) => b.recordingCount - a.recordingCount);
+
+    return NextResponse.json({ clients });
+  } catch (error) {
+    console.error('Clients API error:', error);
+    return NextResponse.json(
+      { error: 'Failed to fetch clients' },
+      { status: 500 }
+    );
+  }
+}

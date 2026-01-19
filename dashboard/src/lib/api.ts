@@ -1,13 +1,12 @@
 /**
- * Backend API Client
+ * Dashboard API Client
+ *
+ * マルチテナント対応版
+ * ダッシュボードのNext.js API Routesを使用
  */
 
-// 本番環境では /zoom/api、開発環境では http://localhost:3000
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || (
-  typeof window !== 'undefined' && window.location.pathname.startsWith('/zoom')
-    ? '/zoom/api'
-    : 'http://localhost:3000'
-);
+// ダッシュボードAPIのベースパス
+const API_BASE = '/api';
 
 /**
  * APIリクエスト用ヘルパー
@@ -24,7 +23,8 @@ async function fetchApi<T>(endpoint: string, options?: RequestInit): Promise<T> 
   });
 
   if (!response.ok) {
-    throw new Error(`API Error: ${response.status} ${response.statusText}`);
+    const error = await response.json().catch(() => ({ error: 'Unknown error' }));
+    throw new Error(error.error || `API Error: ${response.status} ${response.statusText}`);
   }
 
   return response.json();
@@ -54,7 +54,6 @@ export interface Recording {
   hostEmail: string | null;
   transcript: string | null;
   summary: string | null;
-  // 同期ステータス
   youtubeSuccess: boolean | null;
   sheetsSuccess: boolean | null;
   notionSuccess: boolean | null;
@@ -115,6 +114,7 @@ export interface LogsResponse {
 
 export interface Settings {
   id: string;
+  organizationId: string;
   youtubeEnabled: boolean;
   youtubePrivacy: 'private' | 'unlisted' | 'public';
   transcriptionEnabled: boolean;
@@ -123,7 +123,6 @@ export interface Settings {
   summaryStyle: 'brief' | 'detailed';
   sheetsEnabled: boolean;
   notionEnabled: boolean;
-  // API認証情報（マスク済み）
   zoomAccountId: string | null;
   zoomClientId: string | null;
   zoomClientSecret: string | null;
@@ -178,6 +177,21 @@ export interface ConnectionStatus {
   youtube: { connected: boolean; message: string; configured: boolean };
   openai: { connected: boolean; message: string; configured: boolean };
   notion: { connected: boolean; message: string; configured: boolean };
+}
+
+export interface Organization {
+  id: string;
+  name: string;
+  slug: string;
+  plan: string;
+  role: string;
+  memberCount: number;
+  recordingCount: number;
+  createdAt: string;
+}
+
+export interface OrganizationsResponse {
+  organizations: Organization[];
 }
 
 // API Functions
@@ -243,41 +257,11 @@ export const api = {
   /**
    * 設定を更新
    */
-  updateSettings: (settings: Partial<Omit<Settings, 'id' | 'createdAt' | 'updatedAt'>>) =>
+  updateSettings: (settings: Partial<Omit<Settings, 'id' | 'organizationId' | 'createdAt' | 'updatedAt'>>) =>
     fetchApi<Settings>('/settings', {
       method: 'PUT',
       body: JSON.stringify(settings),
     }),
-
-  /**
-   * Zoom接続テスト
-   */
-  testZoom: () =>
-    fetchApi<TestResult>('/test/zoom', { method: 'POST' }),
-
-  /**
-   * Google/YouTube接続テスト
-   */
-  testGoogle: () =>
-    fetchApi<TestResult>('/test/google', { method: 'POST' }),
-
-  /**
-   * OpenAI接続テスト
-   */
-  testOpenAI: () =>
-    fetchApi<TestResult>('/test/openai', { method: 'POST' }),
-
-  /**
-   * Notion接続テスト
-   */
-  testNotion: () =>
-    fetchApi<TestResult>('/test/notion', { method: 'POST' }),
-
-  /**
-   * 接続状態一括取得
-   */
-  getConnectionStatus: () =>
-    fetchApi<ConnectionStatus>('/connection-status'),
 
   /**
    * API認証情報を更新
@@ -286,5 +270,37 @@ export const api = {
     fetchApi<CredentialsResponse>('/settings/credentials', {
       method: 'PUT',
       body: JSON.stringify(credentials),
+    }),
+
+  /**
+   * 接続テスト（バックエンドAPI経由）
+   */
+  testZoom: () =>
+    fetchApi<TestResult>('/test/zoom', { method: 'POST' }),
+
+  testGoogle: () =>
+    fetchApi<TestResult>('/test/google', { method: 'POST' }),
+
+  testOpenAI: () =>
+    fetchApi<TestResult>('/test/openai', { method: 'POST' }),
+
+  testNotion: () =>
+    fetchApi<TestResult>('/test/notion', { method: 'POST' }),
+
+  getConnectionStatus: () =>
+    fetchApi<ConnectionStatus>('/connection-status'),
+
+  /**
+   * 組織一覧を取得
+   */
+  getOrganizations: () => fetchApi<OrganizationsResponse>('/organizations'),
+
+  /**
+   * 組織を作成
+   */
+  createOrganization: (name: string) =>
+    fetchApi<{ success: boolean; organization: Organization }>('/organizations', {
+      method: 'POST',
+      body: JSON.stringify({ name }),
     }),
 };

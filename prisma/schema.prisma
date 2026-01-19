@@ -1,5 +1,6 @@
 // ===========================================
 // Zoom YouTube Automation - Prisma Schema
+// マルチテナント対応版
 // ===========================================
 
 generator client {
@@ -12,13 +13,111 @@ datasource db {
 }
 
 // -------------------------------------------
+// 組織（テナント）
+// -------------------------------------------
+model Organization {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique  // URL用のスラッグ
+  plan        String   @default("free") // free, pro, enterprise
+
+  // 制限
+  maxMembers      Int @default(5)
+  maxRecordings   Int @default(100) // 月間処理数
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // リレーション
+  members     OrganizationMember[]
+  recordings  Recording[]
+  clients     Client[]
+  settings    Settings?
+  invitations Invitation[]
+}
+
+// -------------------------------------------
+// ユーザー
+// -------------------------------------------
+model User {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  name          String?
+  passwordHash  String?  // Credentials認証用
+  image         String?  // プロフィール画像URL
+
+  // OAuth情報
+  googleId      String?  @unique
+
+  // メール認証
+  emailVerified DateTime?
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // リレーション
+  memberships   OrganizationMember[]
+  invitationsSent Invitation[] @relation("InvitationSender")
+}
+
+// -------------------------------------------
+// 組織メンバーシップ（多対多の中間テーブル）
+// -------------------------------------------
+model OrganizationMember {
+  id             String   @id @default(cuid())
+  role           String   @default("member") // owner, admin, member, viewer
+
+  // 外部キー
+  userId         String
+  organizationId String
+
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  // リレーション
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, organizationId])
+  @@index([organizationId])
+}
+
+// -------------------------------------------
+// 招待
+// -------------------------------------------
+model Invitation {
+  id             String   @id @default(cuid())
+  email          String
+  role           String   @default("member")
+  token          String   @unique
+  expiresAt      DateTime
+
+  // 招待者
+  invitedById    String
+  invitedBy      User     @relation("InvitationSender", fields: [invitedById], references: [id])
+
+  // 組織
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  createdAt      DateTime @default(now())
+
+  @@index([email])
+  @@index([organizationId])
+}
+
+// -------------------------------------------
 // 録画レコード
 // -------------------------------------------
 model Recording {
   id              String   @id @default(cuid())
 
+  // 組織（テナント）
+  organizationId  String
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
   // Zoom情報
-  zoomMeetingId   String   @unique
+  zoomMeetingId   String
   zoomMeetingUuid String?
   title           String
   hostEmail       String?
@@ -64,23 +163,33 @@ model Recording {
   updatedAt       DateTime @updatedAt
 
   // インデックス
+  @@unique([organizationId, zoomMeetingId])
+  @@index([organizationId])
   @@index([clientName])
   @@index([status])
   @@index([meetingDate])
 }
 
 // -------------------------------------------
-// クライアントマスタ（オプション）
+// クライアントマスタ
 // -------------------------------------------
 model Client {
-  id          String   @id @default(cuid())
-  name        String   @unique  // クライアント名
-  description String?
-  color       String?  // ダッシュボード表示用カラー
-  isActive    Boolean  @default(true)
+  id             String   @id @default(cuid())
 
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  // 組織
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  name           String   // クライアント名
+  description    String?
+  color          String?  // ダッシュボード表示用カラー
+  isActive       Boolean  @default(true)
+
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
 }
 
 // -------------------------------------------
@@ -100,10 +209,14 @@ model ProcessLog {
 }
 
 // -------------------------------------------
-// アプリケーション設定
+// アプリケーション設定（組織ごと）
 // -------------------------------------------
 model Settings {
-  id          String   @id @default("default")
+  id                   String   @id @default(cuid())
+
+  // 組織（1対1）
+  organizationId       String   @unique
+  organization         Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   // YouTube設定
   youtubeEnabled       Boolean @default(true)
@@ -135,12 +248,13 @@ model Settings {
   // Google API認証情報
   googleClientId       String?
   googleClientSecret   String?
+  googleRefreshToken   String?  // OAuth リフレッシュトークン
   googleSpreadsheetId  String?
 
   // Notion API認証情報
   notionApiKey         String?
   notionDatabaseId     String?
 
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
 }
