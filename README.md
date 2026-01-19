@@ -1,11 +1,12 @@
 # Zoom YouTube Automation
 
-Zoomクラウド録画を自動処理するツール
+Zoomクラウド録画を自動処理するツール（マルチテナント対応）
 
 - YouTube に限定公開でアップロード
 - Whisper で音声を文字起こし
 - GPT で要点を日本語要約
 - Google Sheets / Notion に自動記録
+- **複数ユーザー/組織で利用可能**
 
 ## 機能概要
 
@@ -14,6 +15,32 @@ Zoom録画完了 → YouTube UP → 文字起こし → 要約 → Sheets/Notion
 ```
 
 **クライアント別管理**: ミーティングタイトルに `【クライアント名】` を含めると自動でグループ化
+
+## マルチテナント対応（v2.0）
+
+### 新機能
+
+- **ユーザー認証**: メール/パスワードまたはGoogle OAuthでログイン
+- **組織管理**: 組織を作成してチームメンバーを招待
+- **権限管理**: Owner / Admin / Member / Viewer の4段階
+- **テナント分離**: 各組織のデータは完全に分離
+
+### ユーザーフロー
+
+```
+新規登録 → 組織作成 → メンバー招待 → 録画共有
+                ↓
+           API設定（組織ごと）
+```
+
+### 組織の役割
+
+| 役割 | 権限 |
+|------|------|
+| Owner | 全権限、組織削除 |
+| Admin | 設定変更、メンバー招待 |
+| Member | 録画閲覧・管理 |
+| Viewer | 閲覧のみ |
 
 ## アーキテクチャ
 
@@ -413,15 +440,23 @@ if (credentials.notionApiKey && credentials.notionDatabaseId) {
 
 ## 環境変数一覧
 
+### 認証関連（ダッシュボード）
+
+| 変数名 | 必須 | 説明 |
+|-------|-----|------|
+| `NEXTAUTH_URL` | Yes | ダッシュボードのURL (例: https://example.com) |
+| `NEXTAUTH_SECRET` | Yes | セッション暗号化キー（32文字以上推奨） |
+| `GOOGLE_CLIENT_ID` | No | Google OAuth用 Client ID |
+| `GOOGLE_CLIENT_SECRET` | No | Google OAuth用 Secret |
+
+### API関連（バックエンド）
+
 | 変数名 | 必須 | 説明 |
 |-------|-----|------|
 | `ZOOM_ACCOUNT_ID` | No* | Zoom Account ID |
 | `ZOOM_CLIENT_ID` | No* | Zoom Client ID |
 | `ZOOM_CLIENT_SECRET` | No* | Zoom Client Secret |
 | `ZOOM_WEBHOOK_SECRET_TOKEN` | No* | Webhook検証トークン |
-| `GOOGLE_CLIENT_ID` | No* | Google OAuth Client ID |
-| `GOOGLE_CLIENT_SECRET` | No* | Google OAuth Secret |
-| `GOOGLE_SPREADSHEET_ID` | No* | 記録先スプレッドシートID |
 | `OPENAI_API_KEY` | No* | OpenAI APIキー |
 | `NOTION_API_KEY` | No | Notion APIキー |
 | `NOTION_DATABASE_ID` | No | Notion データベースID |
