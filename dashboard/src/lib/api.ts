@@ -110,7 +110,7 @@ export const api = {
   /**
    * 統計情報を取得
    */
-  getStats: () => fetchApi<Stats>('/api/stats'),
+  getStats: () => fetchApi<Stats>('/stats'),
 
   /**
    * 録画一覧を取得
@@ -128,35 +128,35 @@ export const api = {
     if (params?.status) searchParams.set('status', params.status);
 
     const query = searchParams.toString();
-    return fetchApi<RecordingsResponse>(`/api/recordings${query ? `?${query}` : ''}`);
+    return fetchApi<RecordingsResponse>(`/recordings${query ? `?${query}` : ''}`);
   },
 
   /**
    * 録画詳細を取得
    */
-  getRecording: (id: string) => fetchApi<Recording>(`/api/recordings/${id}`),
+  getRecording: (id: string) => fetchApi<Recording>(`/recordings/${id}`),
 
   /**
    * クライアント一覧を取得
    */
-  getClients: () => fetchApi<ClientsResponse>('/api/clients'),
+  getClients: () => fetchApi<ClientsResponse>('/clients'),
 
   /**
    * クライアントの録画一覧を取得
    */
   getClientRecordings: (name: string) =>
-    fetchApi<ClientRecordingsResponse>(`/api/clients/${encodeURIComponent(name)}/recordings`),
+    fetchApi<ClientRecordingsResponse>(`/clients/${encodeURIComponent(name)}/recordings`),
 
   /**
    * キューステータスを取得
    */
-  getQueueStatus: () => fetchApi<QueueStatus>('/api/queue'),
+  getQueueStatus: () => fetchApi<QueueStatus>('/queue'),
 
   /**
    * 処理ログを取得
    */
   getLogs: (limit?: number) => {
     const query = limit ? `?limit=${limit}` : '';
-    return fetchApi<LogsResponse>(`/api/logs${query}`);
+    return fetchApi<LogsResponse>(`/logs${query}`);
   },
 };
