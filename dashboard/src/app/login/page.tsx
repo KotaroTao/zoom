@@ -21,7 +21,7 @@ function LoginForm() {
 
   // 利用可能なプロバイダーを確認
   useEffect(() => {
-    fetch('/api/auth/providers-check')
+    fetch('/zoom/api/auth/providers-check')
       .then((res) => res.json())
       .then((data) => setIsGoogleEnabled(data.google))
       .catch(() => setIsGoogleEnabled(false));
