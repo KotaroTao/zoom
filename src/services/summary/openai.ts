@@ -1,9 +1,11 @@
 /**
  * OpenAI GPT 要約処理
+ * 認証情報はDBから取得（環境変数をフォールバック）
  */
 
 import OpenAI from 'openai';
 import { config } from '../../config/env.js';
+import { getOpenAICredentials } from '../credentials/index.js';
 import { logger } from '../../utils/logger.js';
 import {
   createSummaryPrompt,
@@ -13,10 +15,15 @@ import {
 } from './prompts.js';
 import type { SummaryResult, SummaryOptions, StructuredSummary } from './types.js';
 
-// OpenAIクライアント
-const openai = new OpenAI({
-  apiKey: config.openai.apiKey,
-});
+/**
+ * OpenAIクライアントを取得（DBから認証情報を取得）
+ */
+async function getOpenAIClient(): Promise<OpenAI> {
+  const creds = await getOpenAICredentials();
+  return new OpenAI({
+    apiKey: creds.apiKey,
+  });
+}
 
 // トークン制限（GPT-4のコンテキスト長を考慮）
 const MAX_INPUT_CHARS = 100000; // 約25,000トークン相当
@@ -57,6 +64,9 @@ export async function generateSummary(
       default:
         prompt = createSummaryPrompt(processedTranscript, options);
     }
+
+    // OpenAIクライアントを取得（DBから認証情報）
+    const openai = await getOpenAIClient();
 
     // GPT-4で要約生成
     const response = await openai.chat.completions.create({
@@ -128,6 +138,9 @@ export async function generateStructuredSummary(
     }
 
     const prompt = createStructuredSummaryPrompt(processedTranscript, options);
+
+    // OpenAIクライアントを取得（DBから認証情報）
+    const openai = await getOpenAIClient();
 
     const response = await openai.chat.completions.create({
       model: config.openai.gptModel || 'gpt-4-turbo-preview',

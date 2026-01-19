@@ -1,12 +1,13 @@
 /**
  * YouTube API クライアント
+ * 認証情報はDBから取得（環境変数をフォールバック）
  */
 
 import * as fs from 'fs';
 import * as path from 'path';
 import { google, youtube_v3 } from 'googleapis';
 import { OAuth2Client } from 'google-auth-library';
-import { config } from '../../config/env.js';
+import { getGoogleCredentials } from '../credentials/index.js';
 import { logger } from '../../utils/logger.js';
 import type { GoogleTokens } from './types.js';
 
@@ -16,14 +17,24 @@ const TOKEN_PATH = path.join(process.cwd(), 'credentials', 'google-token.json');
  * YouTube APIクライアント
  */
 class YouTubeClient {
-  private oauth2Client: OAuth2Client;
+  private oauth2Client: OAuth2Client | null = null;
   private youtube: youtube_v3.Youtube | null = null;
   private initialized: boolean = false;
 
-  constructor() {
+  /**
+   * OAuth2クライアントを取得/作成（DBから認証情報を取得）
+   */
+  private async getOrCreateOAuth2Client(): Promise<OAuth2Client> {
+    if (this.oauth2Client) {
+      return this.oauth2Client;
+    }
+
+    // DBから認証情報を取得
+    const googleCreds = await getGoogleCredentials();
+
     this.oauth2Client = new google.auth.OAuth2(
-      config.google.clientId,
-      config.google.clientSecret,
+      googleCreds.clientId,
+      googleCreds.clientSecret,
       'http://localhost:3333/callback'
     );
 
@@ -34,6 +45,8 @@ class YouTubeClient {
         this.saveTokens(tokens as GoogleTokens);
       }
     });
+
+    return this.oauth2Client;
   }
 
   /**
@@ -41,6 +54,9 @@ class YouTubeClient {
    */
   async initialize(): Promise<void> {
     if (this.initialized) return;
+
+    // OAuth2クライアントを取得（DBから認証情報）
+    const oauth2Client = await this.getOrCreateOAuth2Client();
 
     // 保存されたトークンを読み込み
     const tokens = this.loadTokens();
@@ -50,20 +66,20 @@ class YouTubeClient {
       );
     }
 
-    this.oauth2Client.setCredentials(tokens);
+    oauth2Client.setCredentials(tokens);
 
     // トークンの有効期限をチェック
     if (tokens.expiry_date && tokens.expiry_date < Date.now()) {
       logger.debug('トークンの有効期限切れ、リフレッシュ中...');
-      const { credentials } = await this.oauth2Client.refreshAccessToken();
-      this.oauth2Client.setCredentials(credentials);
+      const { credentials } = await oauth2Client.refreshAccessToken();
+      oauth2Client.setCredentials(credentials);
       this.saveTokens(credentials as GoogleTokens);
     }
 
     // YouTube APIクライアントを作成
     this.youtube = google.youtube({
       version: 'v3',
-      auth: this.oauth2Client,
+      auth: oauth2Client,
     });
 
     this.initialized = true;
@@ -84,8 +100,8 @@ class YouTubeClient {
   /**
    * OAuth2クライアントを取得
    */
-  getOAuth2Client(): OAuth2Client {
-    return this.oauth2Client;
+  async getOAuth2Client(): Promise<OAuth2Client> {
+    return this.getOrCreateOAuth2Client();
   }
 
   /**
