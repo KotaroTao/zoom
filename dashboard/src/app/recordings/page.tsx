@@ -14,6 +14,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import { StatusBadge } from '@/components/StatusBadge';
+import { DashboardLayout } from '@/components/DashboardLayout';
 import { api, Recording } from '@/lib/api';
 
 export default function RecordingsPage() {
@@ -62,12 +63,13 @@ export default function RecordingsPage() {
   const totalPages = Math.ceil(total / limit);
 
   return (
-    <div className="p-6">
-      {/* ヘッダー */}
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold text-gray-900">録画一覧</h1>
-        <p className="text-gray-500 mt-1">すべてのZoom録画を確認</p>
-      </div>
+    <DashboardLayout>
+      <div className="p-6">
+        {/* ヘッダー */}
+        <div className="mb-8">
+          <h1 className="text-2xl font-bold text-gray-900">録画一覧</h1>
+          <p className="text-gray-500 mt-1">すべてのZoom録画を確認</p>
+        </div>
 
       {/* フィルター */}
       <div className="card mb-6">
@@ -256,6 +258,7 @@ export default function RecordingsPage() {
           </>
         )}
       </div>
-    </div>
+      </div>
+    </DashboardLayout>
   );
 }

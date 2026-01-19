@@ -16,6 +16,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import { StatusBadge } from '@/components/StatusBadge';
+import { DashboardLayout } from '@/components/DashboardLayout';
 import { api, Recording, ClientRecordingsResponse } from '@/lib/api';
 
 export default function ClientPage() {
@@ -45,21 +46,23 @@ export default function ClientPage() {
 
   if (loading) {
     return (
-      <div className="p-6">
-        <div className="mb-8">
-          <Link
-            href="/clients"
-            className="inline-flex items-center text-sm text-gray-500 hover:text-gray-700 mb-4"
-          >
-            <ArrowLeft className="h-4 w-4 mr-1" />
-            クライアント一覧に戻る
-          </Link>
-          <h1 className="text-2xl font-bold text-gray-900">{clientName}</h1>
+      <DashboardLayout>
+        <div className="p-6">
+          <div className="mb-8">
+            <Link
+              href="/clients"
+              className="inline-flex items-center text-sm text-gray-500 hover:text-gray-700 mb-4"
+            >
+              <ArrowLeft className="h-4 w-4 mr-1" />
+              クライアント一覧に戻る
+            </Link>
+            <h1 className="text-2xl font-bold text-gray-900">{clientName}</h1>
+          </div>
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
+          </div>
         </div>
-        <div className="flex items-center justify-center py-12">
-          <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
-        </div>
-      </div>
+      </DashboardLayout>
     );
   }
 
@@ -68,7 +71,8 @@ export default function ClientPage() {
   const lastMeeting = recordings[0]?.meetingDate;
 
   return (
-    <div className="p-6">
+    <DashboardLayout>
+      <div className="p-6">
       {/* ヘッダー */}
       <div className="mb-8">
         <Link
@@ -204,6 +208,7 @@ export default function ClientPage() {
           </div>
         )}
       </div>
-    </div>
+      </div>
+    </DashboardLayout>
   );
 }

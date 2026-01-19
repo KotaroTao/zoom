@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { format } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import { Users, Video, Clock, ChevronRight, Loader2 } from 'lucide-react';
+import { DashboardLayout } from '@/components/DashboardLayout';
 import { api, Client } from '@/lib/api';
 
 export default function ClientsPage() {
@@ -34,21 +35,24 @@ export default function ClientsPage() {
 
   if (loading) {
     return (
-      <div className="p-6">
-        <div className="mb-8">
-          <h1 className="text-2xl font-bold text-gray-900">クライアント一覧</h1>
-          <p className="text-gray-500 mt-1">クライアント別のミーティング履歴を確認</p>
+      <DashboardLayout>
+        <div className="p-6">
+          <div className="mb-8">
+            <h1 className="text-2xl font-bold text-gray-900">クライアント一覧</h1>
+            <p className="text-gray-500 mt-1">クライアント別のミーティング履歴を確認</p>
+          </div>
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
+          </div>
         </div>
-        <div className="flex items-center justify-center py-12">
-          <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
-        </div>
-      </div>
+      </DashboardLayout>
     );
   }
 
   return (
-    <div className="p-6">
-      {/* ヘッダー */}
+    <DashboardLayout>
+      <div className="p-6">
+        {/* ヘッダー */}
       <div className="mb-8">
         <h1 className="text-2xl font-bold text-gray-900">クライアント一覧</h1>
         <p className="text-gray-500 mt-1">
@@ -186,6 +190,7 @@ export default function ClientsPage() {
           </div>
         )}
       </div>
-    </div>
+      </div>
+    </DashboardLayout>
   );
 }
