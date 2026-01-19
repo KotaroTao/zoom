@@ -38,7 +38,7 @@ export default function RegisterPage() {
 
     try {
       // ユーザー登録
-      const registerRes = await fetch('/api/auth/register', {
+      const registerRes = await fetch('/zoom/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password, name }),

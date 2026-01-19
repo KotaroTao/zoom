@@ -36,7 +36,7 @@ export default function OnboardingPage() {
     setError(null);
 
     try {
-      const res = await fetch('/api/organizations', {
+      const res = await fetch('/zoom/api/organizations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: orgName }),
