@@ -2,28 +2,64 @@
 
 import { useState, useEffect } from 'react';
 import { Loader2, CheckCircle, Clock, AlertCircle } from 'lucide-react';
-
-interface QueueStats {
-  waiting: number;
-  active: number;
-  completed: number;
-  failed: number;
-}
+import { api, QueueStatus as QueueStatusType } from '@/lib/api';
 
 export function QueueStatus() {
-  const [stats, setStats] = useState<QueueStats>({
-    waiting: 2,
-    active: 1,
-    completed: 21,
+  const [stats, setStats] = useState<QueueStatusType>({
+    waiting: 0,
+    active: 0,
+    completed: 0,
     failed: 0,
   });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  // 実際はAPIから取得
-  // useEffect(() => {
-  //   fetch('/api/queue/status')
-  //     .then(res => res.json())
-  //     .then(setStats);
-  // }, []);
+  useEffect(() => {
+    const fetchQueueStatus = async () => {
+      try {
+        const data = await api.getQueueStatus();
+        setStats(data);
+        setError(null);
+      } catch (err) {
+        console.error('Failed to fetch queue status:', err);
+        setError('キュー状態の取得に失敗しました');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchQueueStatus();
+    // 10秒ごとに更新
+    const interval = setInterval(fetchQueueStatus, 10000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const total = stats.waiting + stats.active + stats.completed + stats.failed;
+  const completionRate = total > 0 ? Math.round((stats.completed / total) * 100) : 0;
+
+  if (loading) {
+    return (
+      <div className="card">
+        <div className="card-header">
+          <h2 className="text-lg font-semibold text-gray-900">処理キュー</h2>
+        </div>
+        <div className="card-body flex items-center justify-center py-8">
+          <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="card">
+        <div className="card-header">
+          <h2 className="text-lg font-semibold text-gray-900">処理キュー</h2>
+        </div>
+        <div className="card-body text-center text-red-500 text-sm">{error}</div>
+      </div>
+    );
+  }
 
   return (
     <div className="card">
@@ -82,28 +118,19 @@ export function QueueStatus() {
         </div>
 
         {/* プログレスバー */}
-        <div className="mt-4">
-          <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
-            <div
-              className="h-full bg-green-500 transition-all duration-500"
-              style={{
-                width: `${
-                  (stats.completed /
-                    (stats.waiting + stats.active + stats.completed + stats.failed)) *
-                  100
-                }%`,
-              }}
-            />
+        {total > 0 && (
+          <div className="mt-4">
+            <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-green-500 transition-all duration-500"
+                style={{ width: `${completionRate}%` }}
+              />
+            </div>
+            <p className="text-xs text-gray-500 mt-1 text-center">
+              {completionRate}% 完了
+            </p>
           </div>
-          <p className="text-xs text-gray-500 mt-1 text-center">
-            {Math.round(
-              (stats.completed /
-                (stats.waiting + stats.active + stats.completed + stats.failed)) *
-                100
-            )}
-            % 完了
-          </p>
-        </div>
+        )}
       </div>
     </div>
   );
