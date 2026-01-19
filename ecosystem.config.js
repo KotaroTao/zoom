@@ -47,7 +47,7 @@ module.exports = {
         NEXTAUTH_URL: 'https://tao-dx.com/zoom',
         NEXTAUTH_SECRET: 'your-production-secret-key-change-this',
         // 管理者認証
-        ADMIN_EMAIL: 'admin@example.com',
+        ADMIN_EMAIL: 'mail@function-t.com',
         // ADMIN_PASSWORD_HASHは.envファイルで設定
       },
       env_file: '/var/www/zoom/dashboard/.env.local',
