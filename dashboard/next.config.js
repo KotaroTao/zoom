@@ -9,9 +9,14 @@ const nextConfig = {
   // 本番ビルド設定
   output: 'standalone',
 
-  // バックエンドAPIへのプロキシ
+  // バックエンドAPIへのプロキシ & OAuth callbackリダイレクト
   async rewrites() {
     return [
+      // OAuth callback を正しいパスにリダイレクト
+      {
+        source: '/callback/:provider',
+        destination: '/api/auth/callback/:provider',
+      },
       {
         source: '/api/backend/:path*',
         destination: 'http://localhost:3000/api/:path*',
