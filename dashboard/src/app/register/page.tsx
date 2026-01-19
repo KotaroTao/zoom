@@ -74,7 +74,7 @@ export default function RegisterPage() {
   };
 
   const handleGoogleSignIn = () => {
-    signIn('google', { callbackUrl: '/onboarding' });
+    signIn('google', { callbackUrl: '/zoom/onboarding' });
   };
 
   return (

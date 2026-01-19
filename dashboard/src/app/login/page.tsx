@@ -9,7 +9,7 @@ import { Video, Lock, Mail, Loader2 } from 'lucide-react';
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const callbackUrl = searchParams.get('callbackUrl') || '/';
+  const callbackUrl = searchParams.get('callbackUrl') || '/zoom/';
   const error = searchParams.get('error');
 
   const [email, setEmail] = useState('');
