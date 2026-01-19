@@ -115,8 +115,41 @@ export interface Settings {
   summaryStyle: 'brief' | 'detailed';
   sheetsEnabled: boolean;
   notionEnabled: boolean;
+  // API認証情報（マスク済み）
+  zoomAccountId: string | null;
+  zoomClientId: string | null;
+  zoomClientSecret: string | null;
+  zoomWebhookSecretToken: string | null;
+  openaiApiKey: string | null;
+  googleClientId: string | null;
+  googleClientSecret: string | null;
+  googleSpreadsheetId: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface Credentials {
+  zoomAccountId?: string;
+  zoomClientId?: string;
+  zoomClientSecret?: string;
+  zoomWebhookSecretToken?: string;
+  openaiApiKey?: string;
+  googleClientId?: string;
+  googleClientSecret?: string;
+  googleSpreadsheetId?: string;
+}
+
+export interface CredentialsResponse {
+  success: boolean;
+  message: string;
+  zoomAccountId: string | null;
+  zoomClientId: string | null;
+  zoomClientSecret: string | null;
+  zoomWebhookSecretToken: string | null;
+  openaiApiKey: string | null;
+  googleClientId: string | null;
+  googleClientSecret: string | null;
+  googleSpreadsheetId: string | null;
 }
 
 export interface TestResult {
@@ -127,9 +160,9 @@ export interface TestResult {
 }
 
 export interface ConnectionStatus {
-  zoom: { connected: boolean; message: string };
-  youtube: { connected: boolean; message: string };
-  openai: { connected: boolean; message: string };
+  zoom: { connected: boolean; message: string; configured: boolean };
+  youtube: { connected: boolean; message: string; configured: boolean };
+  openai: { connected: boolean; message: string; configured: boolean };
 }
 
 // API Functions
@@ -224,4 +257,13 @@ export const api = {
    */
   getConnectionStatus: () =>
     fetchApi<ConnectionStatus>('/connection-status'),
+
+  /**
+   * API認証情報を更新
+   */
+  updateCredentials: (credentials: Credentials) =>
+    fetchApi<CredentialsResponse>('/settings/credentials', {
+      method: 'PUT',
+      body: JSON.stringify(credentials),
+    }),
 };

@@ -17,14 +17,19 @@ import {
   RefreshCw,
   Wifi,
   WifiOff,
+  Key,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 import { DashboardLayout } from '@/components/DashboardLayout';
-import { api, Settings, ConnectionStatus } from '@/lib/api';
+import { api, Settings, ConnectionStatus, Credentials } from '@/lib/api';
 
 export default function SettingsPage() {
   const { data: session } = useSession();
   const [saving, setSaving] = useState(false);
+  const [savingCredentials, setSavingCredentials] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [savedCredentials, setSavedCredentials] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [testingZoom, setTestingZoom] = useState(false);
@@ -32,6 +37,7 @@ export default function SettingsPage() {
   const [testingOpenAI, setTestingOpenAI] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus | null>(null);
   const [testResults, setTestResults] = useState<Record<string, { success: boolean; message: string }>>({});
+  const [showSecrets, setShowSecrets] = useState<Record<string, boolean>>({});
 
   const [settings, setSettings] = useState<Settings>({
     id: 'default',
@@ -43,8 +49,28 @@ export default function SettingsPage() {
     summaryStyle: 'detailed',
     sheetsEnabled: true,
     notionEnabled: false,
+    zoomAccountId: null,
+    zoomClientId: null,
+    zoomClientSecret: null,
+    zoomWebhookSecretToken: null,
+    openaiApiKey: null,
+    googleClientId: null,
+    googleClientSecret: null,
+    googleSpreadsheetId: null,
     createdAt: '',
     updatedAt: '',
+  });
+
+  // 新しい認証情報（入力用）
+  const [credentials, setCredentials] = useState<Credentials>({
+    zoomAccountId: '',
+    zoomClientId: '',
+    zoomClientSecret: '',
+    zoomWebhookSecretToken: '',
+    openaiApiKey: '',
+    googleClientId: '',
+    googleClientSecret: '',
+    googleSpreadsheetId: '',
   });
 
   // 設定と接続状態を取得
@@ -92,6 +118,50 @@ export default function SettingsPage() {
     }
   };
 
+  const handleSaveCredentials = async () => {
+    setSavingCredentials(true);
+    setError(null);
+    setSavedCredentials(false);
+
+    try {
+      const result = await api.updateCredentials(credentials);
+      if (result.success) {
+        setSavedCredentials(true);
+        setTimeout(() => setSavedCredentials(false), 3000);
+        // 更新されたマスク済み値でsettingsを更新
+        setSettings(prev => ({
+          ...prev,
+          zoomAccountId: result.zoomAccountId,
+          zoomClientId: result.zoomClientId,
+          zoomClientSecret: result.zoomClientSecret,
+          zoomWebhookSecretToken: result.zoomWebhookSecretToken,
+          openaiApiKey: result.openaiApiKey,
+          googleClientId: result.googleClientId,
+          googleClientSecret: result.googleClientSecret,
+          googleSpreadsheetId: result.googleSpreadsheetId,
+        }));
+        // 入力フォームをクリア
+        setCredentials({
+          zoomAccountId: '',
+          zoomClientId: '',
+          zoomClientSecret: '',
+          zoomWebhookSecretToken: '',
+          openaiApiKey: '',
+          googleClientId: '',
+          googleClientSecret: '',
+          googleSpreadsheetId: '',
+        });
+        // 接続状態を再取得
+        const statusData = await api.getConnectionStatus();
+        setConnectionStatus(statusData);
+      }
+    } catch (err) {
+      setError('認証情報の保存に失敗しました');
+    } finally {
+      setSavingCredentials(false);
+    }
+  };
+
   const handleTestZoom = async () => {
     setTestingZoom(true);
     try {
@@ -100,7 +170,7 @@ export default function SettingsPage() {
       if (result.success) {
         setConnectionStatus(prev => prev ? {
           ...prev,
-          zoom: { connected: true, message: '接続済み' }
+          zoom: { connected: true, message: '接続済み', configured: true }
         } : null);
       }
     } catch (err) {
@@ -118,7 +188,7 @@ export default function SettingsPage() {
       if (result.success) {
         setConnectionStatus(prev => prev ? {
           ...prev,
-          youtube: { connected: true, message: '接続済み' }
+          youtube: { connected: true, message: '接続済み', configured: true }
         } : null);
       }
     } catch (err) {
@@ -136,7 +206,7 @@ export default function SettingsPage() {
       if (result.success) {
         setConnectionStatus(prev => prev ? {
           ...prev,
-          openai: { connected: true, message: '接続済み' }
+          openai: { connected: true, message: '接続済み', configured: true }
         } : null);
       }
     } catch (err) {
@@ -146,12 +216,16 @@ export default function SettingsPage() {
     }
   };
 
-  const ConnectionIndicator = ({ connected, message }: { connected: boolean; message: string }) => (
-    <div className={`flex items-center text-sm ${connected ? 'text-green-600' : 'text-gray-400'}`}>
+  const ConnectionIndicator = ({ connected, configured, message }: { connected: boolean; configured: boolean; message: string }) => (
+    <div className={`flex items-center text-sm ${connected ? 'text-green-600' : configured ? 'text-yellow-600' : 'text-gray-400'}`}>
       {connected ? <Wifi className="h-4 w-4 mr-1" /> : <WifiOff className="h-4 w-4 mr-1" />}
       {message}
     </div>
   );
+
+  const toggleShowSecret = (key: string) => {
+    setShowSecrets(prev => ({ ...prev, [key]: !prev[key] }));
+  };
 
   if (loading) {
     return (
@@ -173,10 +247,10 @@ export default function SettingsPage() {
         </div>
 
         {/* 保存成功メッセージ */}
-        {saved && (
+        {(saved || savedCredentials) && (
           <div className="mb-4 p-4 bg-green-50 border border-green-200 rounded-lg flex items-center text-green-700">
             <CheckCircle className="h-5 w-5 mr-2" />
-            設定を保存しました
+            {savedCredentials ? 'API認証情報を保存しました' : '設定を保存しました'}
           </div>
         )}
 
@@ -189,112 +263,291 @@ export default function SettingsPage() {
         )}
 
         <div className="space-y-6">
-          {/* API接続状態 */}
+          {/* API認証情報 */}
           <div className="card">
             <div className="card-header flex items-center">
-              <Zap className="h-5 w-5 text-yellow-500 mr-2" />
-              <h2 className="text-lg font-semibold text-gray-900">API接続状態</h2>
+              <Key className="h-5 w-5 text-orange-500 mr-2" />
+              <h2 className="text-lg font-semibold text-gray-900">API認証情報</h2>
             </div>
-            <div className="card-body">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                {/* Zoom */}
-                <div className="p-4 border border-gray-200 rounded-lg">
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center">
-                      <Video className="h-5 w-5 text-blue-500 mr-2" />
-                      <span className="font-medium">Zoom API</span>
-                    </div>
-                    {connectionStatus && (
-                      <ConnectionIndicator
-                        connected={connectionStatus.zoom.connected}
-                        message={connectionStatus.zoom.message}
-                      />
-                    )}
+            <div className="card-body space-y-6">
+              {/* Zoom API */}
+              <div className="border-b pb-4">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center">
+                    <Video className="h-5 w-5 text-blue-500 mr-2" />
+                    <h3 className="font-medium text-gray-900">Zoom API</h3>
                   </div>
+                  {connectionStatus && (
+                    <ConnectionIndicator
+                      connected={connectionStatus.zoom.connected}
+                      configured={connectionStatus.zoom.configured}
+                      message={connectionStatus.zoom.message}
+                    />
+                  )}
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Account ID
+                      {settings.zoomAccountId && (
+                        <span className="ml-2 text-xs text-gray-500">現在: {settings.zoomAccountId}</span>
+                      )}
+                    </label>
+                    <input
+                      type="text"
+                      value={credentials.zoomAccountId || ''}
+                      onChange={(e) => setCredentials({ ...credentials, zoomAccountId: e.target.value })}
+                      placeholder="wK96yaY3SJ6i6X1XtJrfjA"
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Client ID
+                      {settings.zoomClientId && (
+                        <span className="ml-2 text-xs text-gray-500">現在: {settings.zoomClientId}</span>
+                      )}
+                    </label>
+                    <input
+                      type="text"
+                      value={credentials.zoomClientId || ''}
+                      onChange={(e) => setCredentials({ ...credentials, zoomClientId: e.target.value })}
+                      placeholder="c7uav0NJSCqcJzqOvsl69g"
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Client Secret
+                      {settings.zoomClientSecret && (
+                        <span className="ml-2 text-xs text-gray-500">現在: {settings.zoomClientSecret}</span>
+                      )}
+                    </label>
+                    <div className="relative">
+                      <input
+                        type={showSecrets['zoomClientSecret'] ? 'text' : 'password'}
+                        value={credentials.zoomClientSecret || ''}
+                        onChange={(e) => setCredentials({ ...credentials, zoomClientSecret: e.target.value })}
+                        placeholder="****"
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 pr-10 focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => toggleShowSecret('zoomClientSecret')}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                      >
+                        {showSecrets['zoomClientSecret'] ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </button>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Webhook Secret Token
+                      {settings.zoomWebhookSecretToken && (
+                        <span className="ml-2 text-xs text-gray-500">現在: {settings.zoomWebhookSecretToken}</span>
+                      )}
+                    </label>
+                    <div className="relative">
+                      <input
+                        type={showSecrets['zoomWebhookSecret'] ? 'text' : 'password'}
+                        value={credentials.zoomWebhookSecretToken || ''}
+                        onChange={(e) => setCredentials({ ...credentials, zoomWebhookSecretToken: e.target.value })}
+                        placeholder="****"
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 pr-10 focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => toggleShowSecret('zoomWebhookSecret')}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                      >
+                        {showSecrets['zoomWebhookSecret'] ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                <div className="mt-3 flex items-center gap-2">
                   <button
                     onClick={handleTestZoom}
                     disabled={testingZoom}
-                    className="w-full mt-2 px-3 py-2 text-sm bg-gray-100 hover:bg-gray-200 rounded-lg flex items-center justify-center transition-colors disabled:opacity-50"
+                    className="px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 rounded-lg flex items-center transition-colors disabled:opacity-50"
                   >
-                    {testingZoom ? (
-                      <Loader2 className="h-4 w-4 animate-spin mr-1" />
-                    ) : (
-                      <RefreshCw className="h-4 w-4 mr-1" />
-                    )}
+                    {testingZoom ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <RefreshCw className="h-4 w-4 mr-1" />}
                     接続テスト
                   </button>
                   {testResults.zoom && (
-                    <p className={`mt-2 text-xs ${testResults.zoom.success ? 'text-green-600' : 'text-red-600'}`}>
+                    <span className={`text-sm ${testResults.zoom.success ? 'text-green-600' : 'text-red-600'}`}>
                       {testResults.zoom.message}
-                    </p>
+                    </span>
                   )}
                 </div>
+              </div>
 
-                {/* YouTube */}
-                <div className="p-4 border border-gray-200 rounded-lg">
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center">
-                      <Youtube className="h-5 w-5 text-red-500 mr-2" />
-                      <span className="font-medium">YouTube API</span>
-                    </div>
-                    {connectionStatus && (
-                      <ConnectionIndicator
-                        connected={connectionStatus.youtube.connected}
-                        message={connectionStatus.youtube.message}
-                      />
-                    )}
+              {/* OpenAI API */}
+              <div className="border-b pb-4">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center">
+                    <Zap className="h-5 w-5 text-green-500 mr-2" />
+                    <h3 className="font-medium text-gray-900">OpenAI API</h3>
                   </div>
-                  <button
-                    onClick={handleTestGoogle}
-                    disabled={testingGoogle}
-                    className="w-full mt-2 px-3 py-2 text-sm bg-gray-100 hover:bg-gray-200 rounded-lg flex items-center justify-center transition-colors disabled:opacity-50"
-                  >
-                    {testingGoogle ? (
-                      <Loader2 className="h-4 w-4 animate-spin mr-1" />
-                    ) : (
-                      <RefreshCw className="h-4 w-4 mr-1" />
-                    )}
-                    接続テスト
-                  </button>
-                  {testResults.google && (
-                    <p className={`mt-2 text-xs ${testResults.google.success ? 'text-green-600' : 'text-red-600'}`}>
-                      {testResults.google.message}
-                    </p>
+                  {connectionStatus && (
+                    <ConnectionIndicator
+                      connected={connectionStatus.openai.connected}
+                      configured={connectionStatus.openai.configured}
+                      message={connectionStatus.openai.message}
+                    />
                   )}
                 </div>
-
-                {/* OpenAI */}
-                <div className="p-4 border border-gray-200 rounded-lg">
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center">
-                      <Zap className="h-5 w-5 text-green-500 mr-2" />
-                      <span className="font-medium">OpenAI API</span>
-                    </div>
-                    {connectionStatus && (
-                      <ConnectionIndicator
-                        connected={connectionStatus.openai.connected}
-                        message={connectionStatus.openai.message}
-                      />
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    API Key
+                    {settings.openaiApiKey && (
+                      <span className="ml-2 text-xs text-gray-500">現在: {settings.openaiApiKey}</span>
                     )}
+                  </label>
+                  <div className="relative">
+                    <input
+                      type={showSecrets['openaiApiKey'] ? 'text' : 'password'}
+                      value={credentials.openaiApiKey || ''}
+                      onChange={(e) => setCredentials({ ...credentials, openaiApiKey: e.target.value })}
+                      placeholder="sk-proj-..."
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 pr-10 focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => toggleShowSecret('openaiApiKey')}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    >
+                      {showSecrets['openaiApiKey'] ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
                   </div>
+                </div>
+                <div className="mt-3 flex items-center gap-2">
                   <button
                     onClick={handleTestOpenAI}
                     disabled={testingOpenAI}
-                    className="w-full mt-2 px-3 py-2 text-sm bg-gray-100 hover:bg-gray-200 rounded-lg flex items-center justify-center transition-colors disabled:opacity-50"
+                    className="px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 rounded-lg flex items-center transition-colors disabled:opacity-50"
                   >
-                    {testingOpenAI ? (
-                      <Loader2 className="h-4 w-4 animate-spin mr-1" />
-                    ) : (
-                      <RefreshCw className="h-4 w-4 mr-1" />
-                    )}
+                    {testingOpenAI ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <RefreshCw className="h-4 w-4 mr-1" />}
                     接続テスト
                   </button>
                   {testResults.openai && (
-                    <p className={`mt-2 text-xs ${testResults.openai.success ? 'text-green-600' : 'text-red-600'}`}>
+                    <span className={`text-sm ${testResults.openai.success ? 'text-green-600' : 'text-red-600'}`}>
                       {testResults.openai.message}
-                    </p>
+                    </span>
                   )}
                 </div>
+              </div>
+
+              {/* Google API */}
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center">
+                    <Youtube className="h-5 w-5 text-red-500 mr-2" />
+                    <h3 className="font-medium text-gray-900">Google / YouTube API</h3>
+                  </div>
+                  {connectionStatus && (
+                    <ConnectionIndicator
+                      connected={connectionStatus.youtube.connected}
+                      configured={connectionStatus.youtube.configured}
+                      message={connectionStatus.youtube.message}
+                    />
+                  )}
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Client ID
+                      {settings.googleClientId && (
+                        <span className="ml-2 text-xs text-gray-500">現在: {settings.googleClientId}</span>
+                      )}
+                    </label>
+                    <input
+                      type="text"
+                      value={credentials.googleClientId || ''}
+                      onChange={(e) => setCredentials({ ...credentials, googleClientId: e.target.value })}
+                      placeholder="xxxxx.apps.googleusercontent.com"
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Client Secret
+                      {settings.googleClientSecret && (
+                        <span className="ml-2 text-xs text-gray-500">現在: {settings.googleClientSecret}</span>
+                      )}
+                    </label>
+                    <div className="relative">
+                      <input
+                        type={showSecrets['googleClientSecret'] ? 'text' : 'password'}
+                        value={credentials.googleClientSecret || ''}
+                        onChange={(e) => setCredentials({ ...credentials, googleClientSecret: e.target.value })}
+                        placeholder="GOCSPX-..."
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 pr-10 focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => toggleShowSecret('googleClientSecret')}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                      >
+                        {showSecrets['googleClientSecret'] ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </button>
+                    </div>
+                  </div>
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Spreadsheet ID
+                      {settings.googleSpreadsheetId && (
+                        <span className="ml-2 text-xs text-gray-500">現在: {settings.googleSpreadsheetId}</span>
+                      )}
+                    </label>
+                    <input
+                      type="text"
+                      value={credentials.googleSpreadsheetId || ''}
+                      onChange={(e) => setCredentials({ ...credentials, googleSpreadsheetId: e.target.value })}
+                      placeholder="18DBlYtvDPNqn2BmQwmThQ5V9lrd1WQNF-St64W9qg_M"
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                    />
+                  </div>
+                </div>
+                <div className="mt-3 flex items-center gap-2">
+                  <button
+                    onClick={handleTestGoogle}
+                    disabled={testingGoogle}
+                    className="px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 rounded-lg flex items-center transition-colors disabled:opacity-50"
+                  >
+                    {testingGoogle ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <RefreshCw className="h-4 w-4 mr-1" />}
+                    接続テスト
+                  </button>
+                  {testResults.google && (
+                    <span className={`text-sm ${testResults.google.success ? 'text-green-600' : 'text-red-600'}`}>
+                      {testResults.google.message}
+                    </span>
+                  )}
+                </div>
+                <p className="mt-2 text-xs text-gray-500">
+                  YouTube認証にはサーバーでの初回認証が必要です。認証後に接続テストを実行してください。
+                </p>
+              </div>
+
+              {/* 認証情報保存ボタン */}
+              <div className="flex justify-end pt-4 border-t">
+                <button
+                  onClick={handleSaveCredentials}
+                  disabled={savingCredentials}
+                  className="flex items-center px-6 py-2 bg-orange-600 hover:bg-orange-700 text-white font-medium rounded-lg transition-colors disabled:opacity-50"
+                >
+                  {savingCredentials ? (
+                    <>
+                      <Loader2 className="animate-spin h-5 w-5 mr-2" />
+                      保存中...
+                    </>
+                  ) : (
+                    <>
+                      <Key className="h-5 w-5 mr-2" />
+                      認証情報を保存
+                    </>
+                  )}
+                </button>
               </div>
             </div>
           </div>
@@ -481,9 +734,6 @@ export default function SettingsPage() {
                   <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-600"></div>
                 </label>
               </div>
-              <p className="text-xs text-gray-500">
-                スプレッドシートIDは環境変数で設定してください
-              </p>
             </div>
           </div>
 
@@ -514,9 +764,6 @@ export default function SettingsPage() {
                   <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-600"></div>
                 </label>
               </div>
-              <p className="text-xs text-gray-500">
-                NotionのAPI KeyとDatabase IDは環境変数で設定してください
-              </p>
             </div>
           </div>
 

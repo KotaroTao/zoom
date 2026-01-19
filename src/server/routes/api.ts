@@ -221,7 +221,16 @@ apiRouter.get('/logs', async (req: Request, res: Response) => {
 });
 
 /**
- * 設定を取得
+ * 文字列をマスクする（最初と最後の4文字を表示）
+ */
+function maskSecret(value: string | null | undefined): string | null {
+  if (!value) return null;
+  if (value.length <= 8) return '****';
+  return value.substring(0, 4) + '****' + value.substring(value.length - 4);
+}
+
+/**
+ * 設定を取得（機密情報はマスク）
  */
 apiRouter.get('/settings', async (_req: Request, res: Response) => {
   try {
@@ -236,7 +245,20 @@ apiRouter.get('/settings', async (_req: Request, res: Response) => {
       });
     }
 
-    res.json(settings);
+    // 機密情報をマスクして返す
+    const maskedSettings = {
+      ...settings,
+      zoomAccountId: maskSecret(settings.zoomAccountId),
+      zoomClientId: maskSecret(settings.zoomClientId),
+      zoomClientSecret: maskSecret(settings.zoomClientSecret),
+      zoomWebhookSecretToken: maskSecret(settings.zoomWebhookSecretToken),
+      openaiApiKey: maskSecret(settings.openaiApiKey),
+      googleClientId: maskSecret(settings.googleClientId),
+      googleClientSecret: maskSecret(settings.googleClientSecret),
+      // SpreadsheetIDはマスクしない（機密性が低い）
+    };
+
+    res.json(maskedSettings);
   } catch (error) {
     console.error('Settings GET error:', error);
     res.status(500).json({ error: 'Failed to fetch settings' });
@@ -292,23 +314,131 @@ apiRouter.put('/settings', async (req: Request, res: Response) => {
 });
 
 /**
- * Zoom接続テスト
+ * API認証情報を更新
+ */
+apiRouter.put('/settings/credentials', async (req: Request, res: Response) => {
+  try {
+    const {
+      zoomAccountId,
+      zoomClientId,
+      zoomClientSecret,
+      zoomWebhookSecretToken,
+      openaiApiKey,
+      googleClientId,
+      googleClientSecret,
+      googleSpreadsheetId,
+    } = req.body;
+
+    // 空文字列の場合はnullに変換（既存の値を消去しない）
+    const updateData: Record<string, string | undefined> = {};
+
+    if (zoomAccountId !== undefined && zoomAccountId !== '') {
+      updateData.zoomAccountId = zoomAccountId;
+    }
+    if (zoomClientId !== undefined && zoomClientId !== '') {
+      updateData.zoomClientId = zoomClientId;
+    }
+    if (zoomClientSecret !== undefined && zoomClientSecret !== '') {
+      updateData.zoomClientSecret = zoomClientSecret;
+    }
+    if (zoomWebhookSecretToken !== undefined && zoomWebhookSecretToken !== '') {
+      updateData.zoomWebhookSecretToken = zoomWebhookSecretToken;
+    }
+    if (openaiApiKey !== undefined && openaiApiKey !== '') {
+      updateData.openaiApiKey = openaiApiKey;
+    }
+    if (googleClientId !== undefined && googleClientId !== '') {
+      updateData.googleClientId = googleClientId;
+    }
+    if (googleClientSecret !== undefined && googleClientSecret !== '') {
+      updateData.googleClientSecret = googleClientSecret;
+    }
+    if (googleSpreadsheetId !== undefined && googleSpreadsheetId !== '') {
+      updateData.googleSpreadsheetId = googleSpreadsheetId;
+    }
+
+    const settings = await prisma.settings.upsert({
+      where: { id: 'default' },
+      update: updateData,
+      create: {
+        id: 'default',
+        ...updateData,
+      },
+    });
+
+    // マスクして返す
+    res.json({
+      success: true,
+      message: 'API認証情報を更新しました',
+      zoomAccountId: maskSecret(settings.zoomAccountId),
+      zoomClientId: maskSecret(settings.zoomClientId),
+      zoomClientSecret: maskSecret(settings.zoomClientSecret),
+      zoomWebhookSecretToken: maskSecret(settings.zoomWebhookSecretToken),
+      openaiApiKey: maskSecret(settings.openaiApiKey),
+      googleClientId: maskSecret(settings.googleClientId),
+      googleClientSecret: maskSecret(settings.googleClientSecret),
+      googleSpreadsheetId: settings.googleSpreadsheetId,
+    });
+  } catch (error) {
+    console.error('Credentials PUT error:', error);
+    res.status(500).json({ error: 'Failed to update credentials' });
+  }
+});
+
+/**
+ * DBから認証情報を取得するヘルパー関数
+ */
+async function getCredentialsFromDB() {
+  const settings = await prisma.settings.findUnique({
+    where: { id: 'default' },
+  });
+  return settings;
+}
+
+/**
+ * Zoom接続テスト（DB認証情報を優先）
  */
 apiRouter.post('/test/zoom', async (_req: Request, res: Response) => {
   try {
-    // アクセストークンを取得してZoom APIに接続テスト
-    const token = await zoomClient.getAccessToken();
+    // DBから認証情報を取得
+    const dbSettings = await getCredentialsFromDB();
 
-    if (token) {
+    // DBに認証情報があればそれを使用、なければ環境変数を使用
+    const accountId = dbSettings?.zoomAccountId || config.zoom.accountId;
+    const clientId = dbSettings?.zoomClientId || config.zoom.clientId;
+    const clientSecret = dbSettings?.zoomClientSecret || config.zoom.clientSecret;
+
+    if (!accountId || !clientId || !clientSecret) {
+      return res.json({
+        success: false,
+        message: 'Zoom API認証情報が設定されていません',
+      });
+    }
+
+    // Zoom OAuth トークン取得テスト
+    const tokenResponse = await fetch('https://zoom.us/oauth/token', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Authorization': 'Basic ' + Buffer.from(`${clientId}:${clientSecret}`).toString('base64'),
+      },
+      body: new URLSearchParams({
+        grant_type: 'account_credentials',
+        account_id: accountId,
+      }),
+    });
+
+    if (tokenResponse.ok) {
       res.json({
         success: true,
         message: 'Zoom API接続成功',
-        accountId: config.zoom.accountId.substring(0, 8) + '...',
+        accountId: accountId.substring(0, 8) + '...',
       });
     } else {
+      const errorData = await tokenResponse.json() as { reason?: string };
       res.json({
         success: false,
-        message: 'Zoom APIトークン取得失敗',
+        message: `Zoom API認証エラー: ${errorData.reason || tokenResponse.statusText}`,
       });
     }
   } catch (error) {
@@ -348,12 +478,23 @@ apiRouter.post('/test/google', async (_req: Request, res: Response) => {
 });
 
 /**
- * OpenAI接続テスト
+ * OpenAI接続テスト（DB認証情報を優先）
  */
 apiRouter.post('/test/openai', async (_req: Request, res: Response) => {
   try {
+    // DBから認証情報を取得
+    const dbSettings = await getCredentialsFromDB();
+    const apiKey = dbSettings?.openaiApiKey || config.openai.apiKey;
+
+    if (!apiKey) {
+      return res.json({
+        success: false,
+        message: 'OpenAI API Keyが設定されていません',
+      });
+    }
+
     const openai = new OpenAI({
-      apiKey: config.openai.apiKey,
+      apiKey: apiKey,
     });
 
     // 簡単なAPIリクエストでテスト
@@ -381,41 +522,40 @@ apiRouter.post('/test/openai', async (_req: Request, res: Response) => {
 });
 
 /**
- * 接続状態一括取得
+ * 接続状態一括取得（DB認証情報を優先）
  */
 apiRouter.get('/connection-status', async (_req: Request, res: Response) => {
-  const results: Record<string, { connected: boolean; message: string }> = {};
+  const results: Record<string, { connected: boolean; message: string; configured: boolean }> = {};
+  const dbSettings = await getCredentialsFromDB();
 
   // Zoom
-  try {
-    const token = await zoomClient.getAccessToken();
-    results.zoom = {
-      connected: !!token,
-      message: token ? '接続済み' : '未接続',
-    };
-  } catch {
-    results.zoom = { connected: false, message: '未接続' };
-  }
+  const zoomConfigured = !!(dbSettings?.zoomAccountId || config.zoom.accountId);
+  results.zoom = {
+    connected: false,
+    message: zoomConfigured ? '設定済み' : '未設定',
+    configured: zoomConfigured,
+  };
 
-  // YouTube
+  // YouTube/Google
+  const googleConfigured = !!(dbSettings?.googleClientId || config.google.clientId);
   try {
     const isAuthed = await youtubeClient.checkAuth();
     results.youtube = {
       connected: isAuthed,
       message: isAuthed ? '接続済み' : '認証が必要',
+      configured: googleConfigured,
     };
   } catch {
-    results.youtube = { connected: false, message: '未接続' };
+    results.youtube = { connected: false, message: '未接続', configured: googleConfigured };
   }
 
   // OpenAI
-  try {
-    const openai = new OpenAI({ apiKey: config.openai.apiKey });
-    await openai.models.list();
-    results.openai = { connected: true, message: '接続済み' };
-  } catch {
-    results.openai = { connected: false, message: '未接続' };
-  }
+  const openaiConfigured = !!(dbSettings?.openaiApiKey || config.openai.apiKey);
+  results.openai = {
+    connected: false,
+    message: openaiConfigured ? '設定済み' : '未設定',
+    configured: openaiConfigured,
+  };
 
   res.json(results);
 });

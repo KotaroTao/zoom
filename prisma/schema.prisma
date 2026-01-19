@@ -116,6 +116,20 @@ model Settings {
   // Notion設定
   notionEnabled        Boolean @default(false)
 
+  // Zoom API認証情報
+  zoomAccountId        String?
+  zoomClientId         String?
+  zoomClientSecret     String?
+  zoomWebhookSecretToken String?
+
+  // OpenAI API認証情報
+  openaiApiKey         String?
+
+  // Google API認証情報
+  googleClientId       String?
+  googleClientSecret   String?
+  googleSpreadsheetId  String?
+
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
