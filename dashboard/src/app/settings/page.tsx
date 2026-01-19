@@ -42,6 +42,7 @@ export default function SettingsPage() {
 
   const [settings, setSettings] = useState<Settings>({
     id: 'default',
+    organizationId: '',
     youtubeEnabled: true,
     youtubePrivacy: 'unlisted',
     transcriptionEnabled: true,
