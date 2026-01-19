@@ -33,7 +33,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
                 <span>{session?.user?.email}</span>
               </div>
               <button
-                onClick={() => signOut({ callbackUrl: '/login' })}
+                onClick={() => signOut({ callbackUrl: '/zoom/login' })}
                 className="flex items-center text-sm text-gray-500 hover:text-gray-700 transition-colors"
               >
                 <LogOut className="h-4 w-4 mr-1" />
