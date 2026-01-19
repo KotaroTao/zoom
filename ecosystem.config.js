@@ -19,7 +19,7 @@ module.exports = {
       exec_mode: 'fork',
       env: {
         NODE_ENV: 'production',
-        PORT: 3000,
+        PORT: 3002,
       },
       env_file: '/var/www/zoom/.env',
       error_file: '/var/log/pm2/zoom-backend-error.log',
