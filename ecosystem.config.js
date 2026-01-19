@@ -10,7 +10,7 @@
 
 module.exports = {
   apps: [
-    // バックエンドサーバー（Webhook受信 + ワーカー）
+    // バックエンドサーバー（Webhook受信 + API + ワーカー）
     {
       name: 'zoom-backend',
       script: 'dist/index.js',
@@ -19,7 +19,7 @@ module.exports = {
       exec_mode: 'fork',
       env: {
         NODE_ENV: 'production',
-        PORT: 3000,
+        PORT: 3002,
       },
       env_file: '/var/www/zoom/.env',
       error_file: '/var/log/pm2/zoom-backend-error.log',
@@ -43,7 +43,14 @@ module.exports = {
       env: {
         NODE_ENV: 'production',
         PORT: 3001,
+        // NextAuth設定（デプロイ時に変更すること）
+        NEXTAUTH_URL: 'https://tao-dx.com/zoom',
+        NEXTAUTH_SECRET: 'your-production-secret-key-change-this',
+        // 管理者認証
+        ADMIN_EMAIL: 'mail@function-t.com',
+        // ADMIN_PASSWORD_HASHは.envファイルで設定
       },
+      env_file: '/var/www/zoom/dashboard/.env.local',
       error_file: '/var/log/pm2/zoom-dashboard-error.log',
       out_file: '/var/log/pm2/zoom-dashboard-out.log',
       log_date_format: 'YYYY-MM-DD HH:mm:ss Z',

@@ -1,9 +1,6 @@
 import type { Metadata } from 'next';
-import { Inter } from 'next/font/google';
 import './globals.css';
-import { Sidebar } from '@/components/Sidebar';
-
-const inter = Inter({ subsets: ['latin'] });
+import { Providers } from '@/components/Providers';
 
 export const metadata: Metadata = {
   title: 'Zoom Recording Dashboard',
@@ -17,13 +14,10 @@ export default function RootLayout({
 }) {
   return (
     <html lang="ja">
-      <body className={inter.className}>
-        <div className="flex h-screen">
-          <Sidebar />
-          <main className="flex-1 overflow-auto bg-gray-50">
-            {children}
-          </main>
-        </div>
+      <body className="font-sans">
+        <Providers>
+          {children}
+        </Providers>
       </body>
     </html>
   );

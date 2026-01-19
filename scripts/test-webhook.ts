@@ -5,14 +5,35 @@
  *   npx tsx scripts/test-webhook.ts
  *
  * ローカルのWebhookサーバーにテストペイロードを送信します。
+ * DBから認証情報を取得して署名を生成します。
  */
 
 import axios from 'axios';
 import * as crypto from 'crypto';
+import * as path from 'path';
 import 'dotenv/config';
+import Database from 'better-sqlite3';
 
 const WEBHOOK_URL = process.env.WEBHOOK_TEST_URL || 'http://localhost:3000/webhook/zoom';
-const WEBHOOK_SECRET = process.env.ZOOM_WEBHOOK_SECRET_TOKEN || 'test_secret';
+const DB_PATH = path.join(process.cwd(), 'prisma', 'data.db');
+
+// DBから認証情報を取得（フォールバック: 環境変数）
+function getWebhookSecret(): string {
+  try {
+    const db = new Database(DB_PATH, { readonly: true });
+    const settings = db.prepare('SELECT zoomWebhookSecretToken FROM Settings WHERE id = ?').get('default') as { zoomWebhookSecretToken?: string } | undefined;
+    db.close();
+
+    if (settings?.zoomWebhookSecretToken) {
+      console.log('📋 DBからWebhook Secret Tokenを取得');
+      return settings.zoomWebhookSecretToken;
+    }
+  } catch (error) {
+    console.warn('⚠️ DB接続エラー、環境変数を使用');
+  }
+  console.log('📋 環境変数からWebhook Secret Tokenを使用');
+  return process.env.ZOOM_WEBHOOK_SECRET_TOKEN || 'test_secret';
+}
 
 // テスト用のrecording.completedペイロード
 const testPayload = {
@@ -67,10 +88,10 @@ const testPayload = {
 };
 
 // Webhook署名を生成
-function generateSignature(payload: string, timestamp: string): string {
+function generateSignature(payload: string, timestamp: string, secret: string): string {
   const message = `v0:${timestamp}:${payload}`;
   const hash = crypto
-    .createHmac('sha256', WEBHOOK_SECRET)
+    .createHmac('sha256', secret)
     .update(message)
     .digest('hex');
   return `v0=${hash}`;
@@ -86,9 +107,12 @@ async function sendTestWebhook(): Promise<void> {
   console.log(`ミーティング: ${testPayload.payload.object.topic}`);
   console.log();
 
+  // DBから認証情報を取得
+  const webhookSecret = getWebhookSecret();
+
   const payloadString = JSON.stringify(testPayload);
   const timestamp = String(Math.floor(Date.now() / 1000));
-  const signature = generateSignature(payloadString, timestamp);
+  const signature = generateSignature(payloadString, timestamp, webhookSecret);
 
   try {
     const response = await axios.post(WEBHOOK_URL, testPayload, {

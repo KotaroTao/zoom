@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { format } from 'date-fns';
 import { ja } from 'date-fns/locale';
@@ -11,100 +11,112 @@ import {
   ExternalLink,
   FileText,
   Download,
+  Loader2,
+  Youtube,
+  Table,
+  BookOpen,
+  CheckCircle,
+  XCircle,
+  MinusCircle,
 } from 'lucide-react';
 import { StatusBadge } from '@/components/StatusBadge';
+import { DashboardLayout } from '@/components/DashboardLayout';
+import { api, Recording } from '@/lib/api';
 
-interface Recording {
-  id: string;
-  title: string;
-  clientName: string | null;
-  meetingDate: string;
-  youtubeUrl: string | null;
-  zoomUrl: string;
-  status: string;
-  duration: number | null;
-  hasSummary: boolean;
-}
+// 同期ステータスアイコンコンポーネント
+function SyncStatusIcon({
+  success,
+  error,
+  icon: Icon,
+  label,
+  color
+}: {
+  success: boolean | null;
+  error?: string | null;
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+  color: string;
+}) {
+  // null = 未実行、true = 成功、false = 失敗
+  const getStatusColor = () => {
+    if (success === null) return 'text-gray-300';
+    if (success) return color;
+    return 'text-red-500';
+  };
 
-// モックデータ
-const mockRecordings: Recording[] = [
-  {
-    id: '1',
-    title: '【ABC商事】定例MTG',
-    clientName: 'ABC商事',
-    meetingDate: '2024-01-15T14:00:00Z',
-    youtubeUrl: 'https://youtube.com/watch?v=xxx',
-    zoomUrl: 'https://zoom.us/rec/share/xxx',
-    status: 'COMPLETED',
-    duration: 45,
-    hasSummary: true,
-  },
-  {
-    id: '2',
-    title: '【XYZ株式会社】商談',
-    clientName: 'XYZ株式会社',
-    meetingDate: '2024-01-14T10:00:00Z',
-    youtubeUrl: 'https://youtube.com/watch?v=yyy',
-    zoomUrl: 'https://zoom.us/rec/share/yyy',
-    status: 'COMPLETED',
-    duration: 60,
-    hasSummary: true,
-  },
-  {
-    id: '3',
-    title: '【DEF工業】プロジェクト進捗',
-    clientName: 'DEF工業',
-    meetingDate: '2024-01-13T15:30:00Z',
-    youtubeUrl: null,
-    zoomUrl: 'https://zoom.us/rec/share/zzz',
-    status: 'TRANSCRIBING',
-    duration: 30,
-    hasSummary: false,
-  },
-  {
-    id: '4',
-    title: '社内定例会議',
-    clientName: null,
-    meetingDate: '2024-01-12T09:00:00Z',
-    youtubeUrl: null,
-    zoomUrl: 'https://zoom.us/rec/share/aaa',
-    status: 'PENDING',
-    duration: 90,
-    hasSummary: false,
-  },
-  {
-    id: '5',
-    title: '【GHI商会】契約更新',
-    clientName: 'GHI商会',
-    meetingDate: '2024-01-11T13:00:00Z',
-    youtubeUrl: 'https://youtube.com/watch?v=bbb',
-    zoomUrl: 'https://zoom.us/rec/share/bbb',
-    status: 'COMPLETED',
-    duration: 25,
-    hasSummary: true,
-  },
-];
+  const getStatusIcon = () => {
+    if (success === null) return <MinusCircle className="h-3 w-3 absolute -bottom-0.5 -right-0.5 text-gray-400 bg-white rounded-full" />;
+    if (success) return <CheckCircle className="h-3 w-3 absolute -bottom-0.5 -right-0.5 text-green-500 bg-white rounded-full" />;
+    return <XCircle className="h-3 w-3 absolute -bottom-0.5 -right-0.5 text-red-500 bg-white rounded-full" />;
+  };
 
-export default function RecordingsPage() {
-  const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<string>('all');
-
-  const filteredRecordings = mockRecordings.filter((recording) => {
-    const matchesSearch =
-      recording.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      recording.clientName?.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesStatus =
-      statusFilter === 'all' || recording.status === statusFilter;
-    return matchesSearch && matchesStatus;
-  });
+  const getTooltip = () => {
+    if (success === null) return `${label}: 未実行`;
+    if (success) return `${label}: 成功`;
+    return `${label}: 失敗${error ? ` - ${error}` : ''}`;
+  };
 
   return (
-    <div className="p-6">
-      {/* ヘッダー */}
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold text-gray-900">録画一覧</h1>
-        <p className="text-gray-500 mt-1">すべてのZoom録画を確認</p>
-      </div>
+    <div className="relative inline-block" title={getTooltip()}>
+      <Icon className={`h-4 w-4 ${getStatusColor()}`} />
+      {getStatusIcon()}
+    </div>
+  );
+}
+
+export default function RecordingsPage() {
+  const [recordings, setRecordings] = useState<Recording[]>([]);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [page, setPage] = useState(0);
+  const limit = 20;
+
+  useEffect(() => {
+    const fetchRecordings = async () => {
+      setLoading(true);
+      try {
+        const data = await api.getRecordings({
+          limit,
+          offset: page * limit,
+          status: statusFilter !== 'all' ? statusFilter : undefined,
+        });
+        setRecordings(data.recordings);
+        setTotal(data.total);
+        setError(null);
+      } catch (err) {
+        console.error('Failed to fetch recordings:', err);
+        setError('録画の取得に失敗しました');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchRecordings();
+  }, [page, statusFilter]);
+
+  // クライアント側でのテキスト検索フィルター
+  const filteredRecordings = recordings.filter((recording) => {
+    if (!searchQuery) return true;
+    const query = searchQuery.toLowerCase();
+    return (
+      recording.title.toLowerCase().includes(query) ||
+      recording.clientName?.toLowerCase().includes(query)
+    );
+  });
+
+  const totalPages = Math.ceil(total / limit);
+
+  return (
+    <DashboardLayout>
+      <div className="p-6">
+        {/* ヘッダー */}
+        <div className="mb-8">
+          <h1 className="text-2xl font-bold text-gray-900">録画一覧</h1>
+          <p className="text-gray-500 mt-1">すべてのZoom録画を確認</p>
+        </div>
 
       {/* フィルター */}
       <div className="card mb-6">
@@ -127,13 +139,17 @@ export default function RecordingsPage() {
               <Filter className="h-5 w-5 text-gray-400" />
               <select
                 value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
+                onChange={(e) => {
+                  setStatusFilter(e.target.value);
+                  setPage(0);
+                }}
                 className="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
               >
                 <option value="all">すべて</option>
                 <option value="COMPLETED">完了</option>
                 <option value="TRANSCRIBING">文字起こし中</option>
                 <option value="UPLOADING">アップロード中</option>
+                <option value="DOWNLOADING">ダウンロード中</option>
                 <option value="PENDING">待機中</option>
                 <option value="FAILED">失敗</option>
               </select>
@@ -142,111 +158,181 @@ export default function RecordingsPage() {
         </div>
       </div>
 
+      {/* エラー表示 */}
+      {error && (
+        <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">
+          {error}
+        </div>
+      )}
+
       {/* 録画リスト */}
       <div className="card">
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-gray-200">
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                  タイトル
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                  クライアント
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                  日時
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                  時間
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                  ステータス
-                </th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">
-                  アクション
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200">
-              {filteredRecordings.map((recording) => (
-                <tr key={recording.id} className="hover:bg-gray-50">
-                  <td className="px-4 py-4">
-                    <div className="flex items-center">
-                      <Play className="h-4 w-4 text-gray-400 mr-2 flex-shrink-0" />
-                      <span className="text-sm font-medium text-gray-900 truncate max-w-xs">
-                        {recording.title}
-                      </span>
-                    </div>
-                  </td>
-                  <td className="px-4 py-4">
-                    {recording.clientName ? (
-                      <Link
-                        href={`/clients/${encodeURIComponent(recording.clientName)}`}
-                        className="text-sm text-primary-600 hover:text-primary-700"
-                      >
-                        {recording.clientName}
-                      </Link>
-                    ) : (
-                      <span className="text-sm text-gray-400">-</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-4 text-sm text-gray-500">
-                    {format(new Date(recording.meetingDate), 'yyyy/M/d HH:mm', {
-                      locale: ja,
-                    })}
-                  </td>
-                  <td className="px-4 py-4 text-sm text-gray-500">
-                    {recording.duration ? `${recording.duration}分` : '-'}
-                  </td>
-                  <td className="px-4 py-4">
-                    <StatusBadge status={recording.status} />
-                  </td>
-                  <td className="px-4 py-4">
-                    <div className="flex items-center justify-end space-x-1">
-                      {recording.youtubeUrl && (
-                        <a
-                          href={recording.youtubeUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="p-2 text-gray-400 hover:text-red-500 hover:bg-gray-100 rounded-lg"
-                          title="YouTubeで見る"
-                        >
-                          <ExternalLink className="h-4 w-4" />
-                        </a>
-                      )}
-                      {recording.hasSummary && (
-                        <button
-                          className="p-2 text-gray-400 hover:text-primary-600 hover:bg-gray-100 rounded-lg"
-                          title="要約を表示"
-                        >
-                          <FileText className="h-4 w-4" />
-                        </button>
-                      )}
-                      <a
-                        href={recording.zoomUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="p-2 text-gray-400 hover:text-blue-500 hover:bg-gray-100 rounded-lg"
-                        title="Zoomで見る"
-                      >
-                        <Download className="h-4 w-4" />
-                      </a>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-
-        {/* 結果なし */}
-        {filteredRecordings.length === 0 && (
-          <div className="text-center py-12">
-            <p className="text-gray-500">該当する録画が見つかりません</p>
+        {loading ? (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
           </div>
+        ) : (
+          <>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-gray-200">
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                      タイトル
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                      クライアント
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                      日時
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                      時間
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                      ステータス
+                    </th>
+                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">
+                      連携
+                    </th>
+                    <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">
+                      アクション
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {filteredRecordings.map((recording) => (
+                    <tr key={recording.id} className="hover:bg-gray-50">
+                      <td className="px-4 py-4">
+                        <div className="flex items-center">
+                          <Play className="h-4 w-4 text-gray-400 mr-2 flex-shrink-0" />
+                          <span className="text-sm font-medium text-gray-900 truncate max-w-xs">
+                            {recording.title}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-4">
+                        {recording.clientName ? (
+                          <Link
+                            href={`/clients/${encodeURIComponent(recording.clientName)}`}
+                            className="text-sm text-primary-600 hover:text-primary-700"
+                          >
+                            {recording.clientName}
+                          </Link>
+                        ) : (
+                          <span className="text-sm text-gray-400">-</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-4 text-sm text-gray-500">
+                        {format(new Date(recording.meetingDate), 'yyyy/M/d HH:mm', {
+                          locale: ja,
+                        })}
+                      </td>
+                      <td className="px-4 py-4 text-sm text-gray-500">
+                        {recording.duration ? `${recording.duration}分` : '-'}
+                      </td>
+                      <td className="px-4 py-4">
+                        <StatusBadge status={recording.status} />
+                      </td>
+                      <td className="px-4 py-4">
+                        <div className="flex items-center justify-center gap-2">
+                          <SyncStatusIcon
+                            success={recording.youtubeSuccess}
+                            icon={Youtube}
+                            label="YouTube"
+                            color="text-red-500"
+                          />
+                          <SyncStatusIcon
+                            success={recording.sheetsSuccess}
+                            error={recording.sheetsError}
+                            icon={Table}
+                            label="Sheets"
+                            color="text-green-600"
+                          />
+                          <SyncStatusIcon
+                            success={recording.notionSuccess}
+                            error={recording.notionError}
+                            icon={BookOpen}
+                            label="Notion"
+                            color="text-gray-700"
+                          />
+                        </div>
+                      </td>
+                      <td className="px-4 py-4">
+                        <div className="flex items-center justify-end space-x-1">
+                          {recording.youtubeUrl && (
+                            <a
+                              href={recording.youtubeUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="p-2 text-gray-400 hover:text-red-500 hover:bg-gray-100 rounded-lg"
+                              title="YouTubeで見る"
+                            >
+                              <ExternalLink className="h-4 w-4" />
+                            </a>
+                          )}
+                          {recording.summary && (
+                            <button
+                              className="p-2 text-gray-400 hover:text-primary-600 hover:bg-gray-100 rounded-lg"
+                              title="要約を表示"
+                            >
+                              <FileText className="h-4 w-4" />
+                            </button>
+                          )}
+                          {recording.zoomUrl && (
+                            <a
+                              href={recording.zoomUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="p-2 text-gray-400 hover:text-blue-500 hover:bg-gray-100 rounded-lg"
+                              title="Zoomで見る"
+                            >
+                              <Download className="h-4 w-4" />
+                            </a>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* 結果なし */}
+            {filteredRecordings.length === 0 && (
+              <div className="text-center py-12">
+                <p className="text-gray-500">該当する録画が見つかりません</p>
+              </div>
+            )}
+
+            {/* ページネーション */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between px-4 py-3 border-t border-gray-200">
+                <div className="text-sm text-gray-500">
+                  全{total}件中 {page * limit + 1}-{Math.min((page + 1) * limit, total)}件を表示
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setPage(page - 1)}
+                    disabled={page === 0}
+                    className="px-3 py-1 text-sm border rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+                  >
+                    前へ
+                  </button>
+                  <button
+                    onClick={() => setPage(page + 1)}
+                    disabled={page >= totalPages - 1}
+                    className="px-3 py-1 text-sm border rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+                  >
+                    次へ
+                  </button>
+                </div>
+              </div>
+            )}
+          </>
         )}
       </div>
-    </div>
+      </div>
+    </DashboardLayout>
   );
 }

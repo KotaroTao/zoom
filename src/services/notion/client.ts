@@ -211,6 +211,175 @@ export async function createMeetingPage(
 }
 
 /**
+ * 認証情報を直接指定してページを作成（DB認証情報用）
+ */
+export async function createMeetingPageWithCredentials(
+  data: MeetingPageProperties,
+  apiKey: string,
+  databaseId: string,
+  propertyNames: typeof NOTION_PROPERTY_NAMES = {
+    title: 'タイトル',
+    clientName: 'クライアント',
+    meetingDate: '開催日時',
+    youtubeUrl: 'YouTube',
+    summary: '要約',
+    zoomUrl: 'Zoom URL',
+    duration: '時間（分）',
+    hostEmail: 'ホスト',
+    status: 'ステータス',
+  }
+): Promise<CreatePageResult> {
+  logger.info('Notionページ作成（直接認証）', {
+    title: data.title,
+    clientName: data.clientName,
+  });
+
+  try {
+    const notion = new Client({ auth: apiKey });
+
+    // プロパティを構築
+    const properties: Record<string, unknown> = {
+      // タイトル（必須）
+      [propertyNames.title]: {
+        title: [
+          {
+            text: {
+              content: data.title,
+            },
+          },
+        ],
+      },
+    };
+
+    // クライアント名（テキスト）
+    if (data.clientName) {
+      properties[propertyNames.clientName] = {
+        rich_text: [
+          {
+            text: {
+              content: data.clientName,
+            },
+          },
+        ],
+      };
+    }
+
+    // 開催日時（date）
+    properties[propertyNames.meetingDate] = {
+      date: {
+        start: data.meetingDate.toISOString(),
+        time_zone: 'Asia/Tokyo',
+      },
+    };
+
+    // YouTube URL
+    if (data.youtubeUrl) {
+      properties[propertyNames.youtubeUrl] = {
+        url: data.youtubeUrl,
+      };
+    }
+
+    // Zoom URL
+    properties[propertyNames.zoomUrl] = {
+      url: data.zoomUrl,
+    };
+
+    // 録画時間（number）
+    if (data.duration) {
+      properties[propertyNames.duration] = {
+        number: data.duration,
+      };
+    }
+
+    // ホストメール（テキスト）
+    if (data.hostEmail) {
+      properties[propertyNames.hostEmail] = {
+        rich_text: [
+          {
+            text: {
+              content: data.hostEmail,
+            },
+          },
+        ],
+      };
+    }
+
+    // ステータス（セレクト）
+    if (data.status) {
+      properties[propertyNames.status] = {
+        select: {
+          name: data.status === 'completed' ? 'COMPLETED' : data.status === 'failed' ? 'FAILED' : 'PENDING',
+        },
+      };
+    }
+
+    // ページを作成
+    const response = await notion.pages.create({
+      parent: {
+        database_id: databaseId,
+      },
+      properties: properties as Parameters<typeof notion.pages.create>[0]['properties'],
+      // 要約をページ本文に追加
+      children: data.summary
+        ? [
+            {
+              object: 'block' as const,
+              type: 'heading_2' as const,
+              heading_2: {
+                rich_text: [
+                  {
+                    type: 'text' as const,
+                    text: {
+                      content: '要約',
+                    },
+                  },
+                ],
+              },
+            },
+            {
+              object: 'block' as const,
+              type: 'paragraph' as const,
+              paragraph: {
+                rich_text: [
+                  {
+                    type: 'text' as const,
+                    text: {
+                      content: data.summary.substring(0, 2000), // Notionの制限
+                    },
+                  },
+                ],
+              },
+            },
+          ]
+        : [],
+    });
+
+    const pageId = response.id;
+    const pageUrl = `https://notion.so/${pageId.replace(/-/g, '')}`;
+
+    logger.info('Notionページ作成完了', {
+      pageId,
+      pageUrl,
+    });
+
+    return {
+      success: true,
+      pageId,
+      pageUrl,
+    };
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+
+    logger.error('Notionページ作成失敗', { error: errorMessage });
+
+    return {
+      success: false,
+      error: errorMessage,
+    };
+  }
+}
+
+/**
  * ページを更新
  */
 export async function updateMeetingPage(

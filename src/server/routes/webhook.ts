@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
 import { config } from '../../config/env.js';
+import { getZoomCredentials } from '../../services/credentials/index.js';
 import { logger, webhookLogger } from '../../utils/logger.js';
 import { extractClientName } from '../../utils/clientParser.js';
 import { addProcessingJob } from '../../queue/worker.js';
@@ -10,8 +11,9 @@ export const webhookRouter = Router();
 
 /**
  * Zoom Webhook 署名検証
+ * 認証情報はDBから取得（環境変数をフォールバック）
  */
-function verifyZoomWebhook(req: Request): boolean {
+async function verifyZoomWebhook(req: Request): Promise<boolean> {
   const signature = req.headers['x-zm-signature'] as string;
   const timestamp = req.headers['x-zm-request-timestamp'] as string;
 
@@ -24,9 +26,12 @@ function verifyZoomWebhook(req: Request): boolean {
     return false;
   }
 
+  // DBから認証情報を取得
+  const zoomCreds = await getZoomCredentials();
+
   const message = `v0:${timestamp}:${rawBody.toString()}`;
   const hashForVerify = crypto
-    .createHmac('sha256', config.zoom.webhookSecretToken)
+    .createHmac('sha256', zoomCreds.webhookSecretToken)
     .update(message)
     .digest('hex');
 
@@ -40,13 +45,17 @@ function verifyZoomWebhook(req: Request): boolean {
 
 /**
  * Zoom Webhook エンドポイント検証（初回セットアップ用）
+ * 認証情報はDBから取得（環境変数をフォールバック）
  */
-function handleEndpointValidation(req: Request, res: Response): void {
+async function handleEndpointValidation(req: Request, res: Response): Promise<void> {
   const { payload } = req.body;
 
   if (payload?.plainToken) {
+    // DBから認証情報を取得
+    const zoomCreds = await getZoomCredentials();
+
     const hashForValidate = crypto
-      .createHmac('sha256', config.zoom.webhookSecretToken)
+      .createHmac('sha256', zoomCreds.webhookSecretToken)
       .update(payload.plainToken)
       .digest('hex');
 
@@ -113,12 +122,12 @@ webhookRouter.post('/zoom', async (req: Request, res: Response) => {
   try {
     // エンドポイント検証リクエストの処理
     if (req.body.event === 'endpoint.url_validation') {
-      handleEndpointValidation(req, res);
+      await handleEndpointValidation(req, res);
       return;
     }
 
     // 署名検証
-    if (!verifyZoomWebhook(req)) {
+    if (!(await verifyZoomWebhook(req))) {
       webhookLogger.rejected('署名検証失敗');
       res.status(401).json({ error: 'Invalid signature' });
       return;

@@ -41,6 +41,13 @@ model Recording {
   sheetRowNumber  Int?     // Google Sheets の行番号
   notionPageId    String?  // Notion ページID
 
+  // 同期ステータス（各サービスへの書き込み成功/失敗）
+  youtubeSuccess  Boolean?  // YouTube アップロード成功
+  sheetsSuccess   Boolean?  // Google Sheets 書き込み成功
+  notionSuccess   Boolean?  // Notion 書き込み成功
+  sheetsError     String?   // Sheets エラーメッセージ
+  notionError     String?   // Notion エラーメッセージ
+
   // ステータス管理
   status          String   @default("PENDING")  // PENDING, DOWNLOADING, UPLOADING, TRANSCRIBING, SUMMARIZING, SYNCING, COMPLETED, FAILED
   errorMessage    String?
@@ -90,4 +97,50 @@ model ProcessLog {
   createdAt   DateTime @default(now())
 
   @@index([recordingId])
+}
+
+// -------------------------------------------
+// アプリケーション設定
+// -------------------------------------------
+model Settings {
+  id          String   @id @default("default")
+
+  // YouTube設定
+  youtubeEnabled       Boolean @default(true)
+  youtubePrivacy       String  @default("unlisted") // private, unlisted, public
+
+  // 文字起こし設定
+  transcriptionEnabled Boolean @default(true)
+  transcriptionLanguage String @default("ja")
+
+  // 要約設定
+  summaryEnabled       Boolean @default(true)
+  summaryStyle         String  @default("detailed") // brief, detailed
+
+  // Google Sheets設定
+  sheetsEnabled        Boolean @default(true)
+
+  // Notion設定
+  notionEnabled        Boolean @default(false)
+
+  // Zoom API認証情報
+  zoomAccountId        String?
+  zoomClientId         String?
+  zoomClientSecret     String?
+  zoomWebhookSecretToken String?
+
+  // OpenAI API認証情報
+  openaiApiKey         String?
+
+  // Google API認証情報
+  googleClientId       String?
+  googleClientSecret   String?
+  googleSpreadsheetId  String?
+
+  // Notion API認証情報
+  notionApiKey         String?
+  notionDatabaseId     String?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }

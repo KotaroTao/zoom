@@ -1,11 +1,12 @@
 /**
  * OpenAI Whisper 文字起こし処理
+ * 認証情報はDBから取得（環境変数をフォールバック）
  */
 
 import * as fs from 'fs';
 import * as path from 'path';
 import OpenAI from 'openai';
-import { config } from '../../config/env.js';
+import { getOpenAICredentials } from '../credentials/index.js';
 import { logger } from '../../utils/logger.js';
 import type {
   TranscriptionResult,
@@ -13,10 +14,15 @@ import type {
   WhisperOptions,
 } from './types.js';
 
-// OpenAIクライアント
-const openai = new OpenAI({
-  apiKey: config.openai.apiKey,
-});
+/**
+ * OpenAIクライアントを取得（DBから認証情報を取得）
+ */
+async function getOpenAIClient(): Promise<OpenAI> {
+  const creds = await getOpenAICredentials();
+  return new OpenAI({
+    apiKey: creds.apiKey,
+  });
+}
 
 // Whisperの最大ファイルサイズ（25MB）
 const MAX_FILE_SIZE = 25 * 1024 * 1024;
@@ -49,6 +55,9 @@ export async function transcribeWithWhisper(
         limit: `${MAX_FILE_SIZE / 1024 / 1024} MB`,
       });
     }
+
+    // OpenAIクライアントを取得（DBから認証情報）
+    const openai = await getOpenAIClient();
 
     // Whisper API呼び出し
     const response = await openai.audio.transcriptions.create({

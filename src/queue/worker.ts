@@ -14,6 +14,7 @@ import { Queue, Worker, Job } from 'bullmq';
 import { config } from '../config/env.js';
 import { logger, stepLogger } from '../utils/logger.js';
 import { deleteFile } from '../utils/fileManager.js';
+import { prisma } from '../utils/db.js';
 import type { ProcessingJob } from '../types/index.js';
 
 // サービスのインポート
@@ -23,7 +24,8 @@ import { uploadToYouTube } from '../services/youtube/upload.js';
 import { transcribeWithWhisper } from '../services/transcription/whisper.js';
 import { generateSummary } from '../services/summary/openai.js';
 import { appendRow } from '../services/sheets/client.js';
-import { createMeetingPage, isNotionEnabled } from '../services/notion/client.js';
+import { createMeetingPageWithCredentials } from '../services/notion/client.js';
+import { getCredentials } from '../utils/credentials.js';
 
 // Redis接続設定（ioredisインスタンスではなく設定オブジェクトを使用）
 const connection = {
@@ -98,10 +100,35 @@ async function processRecording(job: Job<ProcessingJob>): Promise<void> {
 
   let downloadedFilePath: string | null = null;
   let youtubeUrl: string | null = null;
+  let youtubeVideoId: string | null = null;
   let transcript: string | null = null;
   let summary: string | null = null;
+  let dbRecordingId: string | null = null;
 
   try {
+    // DBに録画レコードを作成/更新
+    const dbRecording = await prisma.recording.upsert({
+      where: { zoomMeetingId },
+      create: {
+        zoomMeetingId,
+        zoomMeetingUuid: job.data.zoomMeetingUuid,
+        title,
+        hostEmail,
+        duration,
+        meetingDate: meetingDate ? new Date(meetingDate) : new Date(),
+        zoomUrl,
+        clientName,
+        status: 'DOWNLOADING',
+      },
+      update: {
+        title,
+        hostEmail,
+        duration,
+        status: 'DOWNLOADING',
+      },
+    });
+    dbRecordingId = dbRecording.id;
+    logger.info('DB録画レコード作成/更新', { dbRecordingId });
     // ==============================
     // Step 1: Zoom録画ダウンロード
     // ==============================
@@ -157,6 +184,14 @@ async function processRecording(job: Job<ProcessingJob>): Promise<void> {
 
     stepLogger.complete('DOWNLOAD', recordingId);
 
+    // DBステータス更新
+    if (dbRecordingId) {
+      await prisma.recording.update({
+        where: { id: dbRecordingId },
+        data: { status: 'UPLOADING', downloadedAt: new Date() },
+      });
+    }
+
     // ==============================
     // Step 2: YouTubeアップロード
     // ==============================
@@ -175,6 +210,7 @@ async function processRecording(job: Job<ProcessingJob>): Promise<void> {
 
       if (uploadResult.success && uploadResult.url) {
         youtubeUrl = uploadResult.url;
+        youtubeVideoId = uploadResult.videoId || null;
         logger.info('YouTubeアップロード完了', { youtubeUrl });
       } else {
         logger.error('YouTubeアップロード失敗', { error: uploadResult.error });
@@ -184,6 +220,20 @@ async function processRecording(job: Job<ProcessingJob>): Promise<void> {
     }
 
     stepLogger.complete('UPLOAD', recordingId);
+
+    // DBステータス更新（YouTubeアップロード結果を保存）
+    if (dbRecordingId) {
+      await prisma.recording.update({
+        where: { id: dbRecordingId },
+        data: {
+          status: 'TRANSCRIBING',
+          uploadedAt: new Date(),
+          youtubeUrl,
+          youtubeVideoId,
+          youtubeSuccess: !!youtubeUrl,
+        },
+      });
+    }
 
     // ==============================
     // Step 3: 文字起こし
@@ -211,6 +261,18 @@ async function processRecording(job: Job<ProcessingJob>): Promise<void> {
 
     stepLogger.complete('TRANSCRIBE', recordingId);
 
+    // DBステータス更新
+    if (dbRecordingId) {
+      await prisma.recording.update({
+        where: { id: dbRecordingId },
+        data: {
+          status: 'SUMMARIZING',
+          transcribedAt: new Date(),
+          transcript,
+        },
+      });
+    }
+
     // ==============================
     // Step 4: 要約生成
     // ==============================
@@ -236,15 +298,38 @@ async function processRecording(job: Job<ProcessingJob>): Promise<void> {
 
     stepLogger.complete('SUMMARIZE', recordingId);
 
+    // DBステータス更新
+    if (dbRecordingId) {
+      await prisma.recording.update({
+        where: { id: dbRecordingId },
+        data: {
+          status: 'SYNCING',
+          summarizedAt: new Date(),
+          summary,
+        },
+      });
+    }
+
     // ==============================
     // Step 5: Google Sheets / Notion 同期
     // ==============================
     stepLogger.start('SYNC', recordingId);
     await job.updateProgress(90);
 
+    // DBから認証情報を取得
+    const credentials = await getCredentials();
+
+    // 同期結果を追跡
+    let sheetsSuccess: boolean | null = null;
+    let sheetsError: string | null = null;
+    let sheetRowNumber: number | null = null;
+    let notionSuccess: boolean | null = null;
+    let notionError: string | null = null;
+    let notionPageId: string | null = null;
+
     // Google Sheets に追加
-    if (config.google.spreadsheetId) {
-      const sheetResult = await appendRow(config.google.spreadsheetId, {
+    if (credentials.googleSpreadsheetId) {
+      const sheetResult = await appendRow(credentials.googleSpreadsheetId, {
         title,
         clientName,
         meetingDate: meetingDate ? new Date(meetingDate) : new Date(),
@@ -256,32 +341,46 @@ async function processRecording(job: Job<ProcessingJob>): Promise<void> {
         processedAt: new Date(),
       });
 
+      sheetsSuccess = sheetResult.success;
       if (sheetResult.success) {
+        sheetRowNumber = sheetResult.rowNumber || null;
         logger.info('Google Sheets追加完了', { rowNumber: sheetResult.rowNumber });
       } else {
+        sheetsError = sheetResult.error || 'Unknown error';
         logger.error('Google Sheets追加失敗', { error: sheetResult.error });
       }
+    } else {
+      logger.debug('Google Sheets連携はスキップ（スプレッドシートID未設定）');
     }
 
     // Notion に追加
-    if (isNotionEnabled()) {
-      const notionResult = await createMeetingPage({
-        title,
-        clientName,
-        meetingDate: meetingDate ? new Date(meetingDate) : new Date(),
-        youtubeUrl,
-        summary,
-        zoomUrl,
-        duration,
-        hostEmail,
-        status: 'completed',
-      });
+    if (credentials.notionApiKey && credentials.notionDatabaseId) {
+      const notionResult = await createMeetingPageWithCredentials(
+        {
+          title,
+          clientName,
+          meetingDate: meetingDate ? new Date(meetingDate) : new Date(),
+          youtubeUrl,
+          summary,
+          zoomUrl,
+          duration,
+          hostEmail,
+          status: 'completed',
+        },
+        credentials.notionApiKey,
+        credentials.notionDatabaseId
+      );
 
+      notionSuccess = notionResult.success;
       if (notionResult.success) {
+        notionPageId = notionResult.pageId || null;
         logger.info('Notionページ作成完了', { pageUrl: notionResult.pageUrl });
       } else {
+        notionError = notionResult.error || 'Unknown error';
         logger.error('Notionページ作成失敗', { error: notionResult.error });
       }
+    } else {
+      logger.debug('Notion連携はスキップ（認証情報未設定）');
     }
 
     stepLogger.complete('SYNC', recordingId);
@@ -299,6 +398,24 @@ async function processRecording(job: Job<ProcessingJob>): Promise<void> {
 
     // 完了
     await job.updateProgress(100);
+
+    // DBステータスを完了に更新（同期結果を含む）
+    if (dbRecordingId) {
+      await prisma.recording.update({
+        where: { id: dbRecordingId },
+        data: {
+          status: 'COMPLETED',
+          syncedAt: new Date(),
+          sheetRowNumber,
+          sheetsSuccess,
+          sheetsError,
+          notionPageId,
+          notionSuccess,
+          notionError,
+        },
+      });
+    }
+
     logger.info('='.repeat(40));
     logger.info('録画処理完了', {
       recordingId,
@@ -311,6 +428,17 @@ async function processRecording(job: Job<ProcessingJob>): Promise<void> {
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     logger.error('録画処理失敗', { recordingId, title, error: errorMessage });
+
+    // DBステータスを失敗に更新
+    if (dbRecordingId) {
+      await prisma.recording.update({
+        where: { id: dbRecordingId },
+        data: {
+          status: 'FAILED',
+          errorMessage,
+        },
+      }).catch(() => {});
+    }
 
     // エラー時も一時ファイルを削除
     if (downloadedFilePath) {

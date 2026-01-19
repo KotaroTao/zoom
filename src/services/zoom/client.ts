@@ -2,10 +2,11 @@
  * Zoom API クライアント
  *
  * Server-to-Server OAuth認証を使用
+ * 認証情報はデータベースから取得（環境変数をフォールバック）
  */
 
 import axios, { AxiosInstance } from 'axios';
-import { config } from '../../config/env.js';
+import { getZoomCredentials } from '../credentials/index.js';
 import { logger } from '../../utils/logger.js';
 import type {
   ZoomAccessTokenResponse,
@@ -62,6 +63,7 @@ class ZoomClient {
 
   /**
    * アクセストークンを取得（キャッシュ付き）
+   * 認証情報はDBから取得（環境変数をフォールバック）
    */
   async getAccessToken(): Promise<string> {
     // キャッシュが有効な場合はそれを返す
@@ -72,15 +74,18 @@ class ZoomClient {
     logger.debug('Zoomアクセストークンを取得中...');
 
     try {
+      // DBから認証情報を取得
+      const zoomCreds = await getZoomCredentials();
+
       const credentials = Buffer.from(
-        `${config.zoom.clientId}:${config.zoom.clientSecret}`
+        `${zoomCreds.clientId}:${zoomCreds.clientSecret}`
       ).toString('base64');
 
       const response = await axios.post<ZoomAccessTokenResponse>(
         ZOOM_OAUTH_URL,
         new URLSearchParams({
           grant_type: 'account_credentials',
-          account_id: config.zoom.accountId,
+          account_id: zoomCreds.accountId,
         }),
         {
           headers: {
