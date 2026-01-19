@@ -41,6 +41,13 @@ model Recording {
   sheetRowNumber  Int?     // Google Sheets の行番号
   notionPageId    String?  // Notion ページID
 
+  // 同期ステータス（各サービスへの書き込み成功/失敗）
+  youtubeSuccess  Boolean?  // YouTube アップロード成功
+  sheetsSuccess   Boolean?  // Google Sheets 書き込み成功
+  notionSuccess   Boolean?  // Notion 書き込み成功
+  sheetsError     String?   // Sheets エラーメッセージ
+  notionError     String?   // Notion エラーメッセージ
+
   // ステータス管理
   status          String   @default("PENDING")  // PENDING, DOWNLOADING, UPLOADING, TRANSCRIBING, SUMMARIZING, SYNCING, COMPLETED, FAILED
   errorMessage    String?

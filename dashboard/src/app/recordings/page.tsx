@@ -12,10 +12,57 @@ import {
   FileText,
   Download,
   Loader2,
+  Youtube,
+  Table,
+  BookOpen,
+  CheckCircle,
+  XCircle,
+  MinusCircle,
 } from 'lucide-react';
 import { StatusBadge } from '@/components/StatusBadge';
 import { DashboardLayout } from '@/components/DashboardLayout';
 import { api, Recording } from '@/lib/api';
+
+// 同期ステータスアイコンコンポーネント
+function SyncStatusIcon({
+  success,
+  error,
+  icon: Icon,
+  label,
+  color
+}: {
+  success: boolean | null;
+  error?: string | null;
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+  color: string;
+}) {
+  // null = 未実行、true = 成功、false = 失敗
+  const getStatusColor = () => {
+    if (success === null) return 'text-gray-300';
+    if (success) return color;
+    return 'text-red-500';
+  };
+
+  const getStatusIcon = () => {
+    if (success === null) return <MinusCircle className="h-3 w-3 absolute -bottom-0.5 -right-0.5 text-gray-400 bg-white rounded-full" />;
+    if (success) return <CheckCircle className="h-3 w-3 absolute -bottom-0.5 -right-0.5 text-green-500 bg-white rounded-full" />;
+    return <XCircle className="h-3 w-3 absolute -bottom-0.5 -right-0.5 text-red-500 bg-white rounded-full" />;
+  };
+
+  const getTooltip = () => {
+    if (success === null) return `${label}: 未実行`;
+    if (success) return `${label}: 成功`;
+    return `${label}: 失敗${error ? ` - ${error}` : ''}`;
+  };
+
+  return (
+    <div className="relative inline-block" title={getTooltip()}>
+      <Icon className={`h-4 w-4 ${getStatusColor()}`} />
+      {getStatusIcon()}
+    </div>
+  );
+}
 
 export default function RecordingsPage() {
   const [recordings, setRecordings] = useState<Recording[]>([]);
@@ -145,6 +192,9 @@ export default function RecordingsPage() {
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
                       ステータス
                     </th>
+                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">
+                      連携
+                    </th>
                     <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">
                       アクション
                     </th>
@@ -183,6 +233,30 @@ export default function RecordingsPage() {
                       </td>
                       <td className="px-4 py-4">
                         <StatusBadge status={recording.status} />
+                      </td>
+                      <td className="px-4 py-4">
+                        <div className="flex items-center justify-center gap-2">
+                          <SyncStatusIcon
+                            success={recording.youtubeSuccess}
+                            icon={Youtube}
+                            label="YouTube"
+                            color="text-red-500"
+                          />
+                          <SyncStatusIcon
+                            success={recording.sheetsSuccess}
+                            error={recording.sheetsError}
+                            icon={Table}
+                            label="Sheets"
+                            color="text-green-600"
+                          />
+                          <SyncStatusIcon
+                            success={recording.notionSuccess}
+                            error={recording.notionError}
+                            icon={BookOpen}
+                            label="Notion"
+                            color="text-gray-700"
+                          />
+                        </div>
                       </td>
                       <td className="px-4 py-4">
                         <div className="flex items-center justify-end space-x-1">

@@ -54,6 +54,14 @@ export interface Recording {
   hostEmail: string | null;
   transcript: string | null;
   summary: string | null;
+  // 同期ステータス
+  youtubeSuccess: boolean | null;
+  sheetsSuccess: boolean | null;
+  notionSuccess: boolean | null;
+  sheetsError: string | null;
+  notionError: string | null;
+  sheetRowNumber: number | null;
+  notionPageId: string | null;
   createdAt: string;
   updatedAt: string;
 }

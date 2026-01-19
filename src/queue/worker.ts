@@ -221,7 +221,7 @@ async function processRecording(job: Job<ProcessingJob>): Promise<void> {
 
     stepLogger.complete('UPLOAD', recordingId);
 
-    // DBステータス更新
+    // DBステータス更新（YouTubeアップロード結果を保存）
     if (dbRecordingId) {
       await prisma.recording.update({
         where: { id: dbRecordingId },
@@ -230,6 +230,7 @@ async function processRecording(job: Job<ProcessingJob>): Promise<void> {
           uploadedAt: new Date(),
           youtubeUrl,
           youtubeVideoId,
+          youtubeSuccess: !!youtubeUrl,
         },
       });
     }
@@ -318,6 +319,14 @@ async function processRecording(job: Job<ProcessingJob>): Promise<void> {
     // DBから認証情報を取得
     const credentials = await getCredentials();
 
+    // 同期結果を追跡
+    let sheetsSuccess: boolean | null = null;
+    let sheetsError: string | null = null;
+    let sheetRowNumber: number | null = null;
+    let notionSuccess: boolean | null = null;
+    let notionError: string | null = null;
+    let notionPageId: string | null = null;
+
     // Google Sheets に追加
     if (credentials.googleSpreadsheetId) {
       const sheetResult = await appendRow(credentials.googleSpreadsheetId, {
@@ -332,9 +341,12 @@ async function processRecording(job: Job<ProcessingJob>): Promise<void> {
         processedAt: new Date(),
       });
 
+      sheetsSuccess = sheetResult.success;
       if (sheetResult.success) {
+        sheetRowNumber = sheetResult.rowNumber || null;
         logger.info('Google Sheets追加完了', { rowNumber: sheetResult.rowNumber });
       } else {
+        sheetsError = sheetResult.error || 'Unknown error';
         logger.error('Google Sheets追加失敗', { error: sheetResult.error });
       }
     } else {
@@ -359,9 +371,12 @@ async function processRecording(job: Job<ProcessingJob>): Promise<void> {
         credentials.notionDatabaseId
       );
 
+      notionSuccess = notionResult.success;
       if (notionResult.success) {
+        notionPageId = notionResult.pageId || null;
         logger.info('Notionページ作成完了', { pageUrl: notionResult.pageUrl });
       } else {
+        notionError = notionResult.error || 'Unknown error';
         logger.error('Notionページ作成失敗', { error: notionResult.error });
       }
     } else {
@@ -384,13 +399,19 @@ async function processRecording(job: Job<ProcessingJob>): Promise<void> {
     // 完了
     await job.updateProgress(100);
 
-    // DBステータスを完了に更新
+    // DBステータスを完了に更新（同期結果を含む）
     if (dbRecordingId) {
       await prisma.recording.update({
         where: { id: dbRecordingId },
         data: {
           status: 'COMPLETED',
           syncedAt: new Date(),
+          sheetRowNumber,
+          sheetsSuccess,
+          sheetsError,
+          notionPageId,
+          notionSuccess,
+          notionError,
         },
       });
     }
