@@ -23,18 +23,26 @@ export const authOptions: NextAuthOptions = {
         password: { label: 'パスワード', type: 'password' },
       },
       async authorize(credentials) {
+        console.log('[AUTH] Credentials received:', credentials?.email);
+        console.log('[AUTH] ADMIN_EMAIL:', ADMIN_EMAIL);
+        console.log('[AUTH] ADMIN_PASSWORD_HASH set:', !!ADMIN_PASSWORD_HASH);
+
         if (!credentials?.email || !credentials?.password) {
+          console.log('[AUTH] Missing credentials');
           return null;
         }
 
         // メールアドレスをチェック
         if (credentials.email !== ADMIN_EMAIL) {
+          console.log('[AUTH] Email mismatch:', credentials.email, '!==', ADMIN_EMAIL);
           return null;
         }
 
         // パスワードをハッシュと照合
         const passwordHash = ADMIN_PASSWORD_HASH || DEFAULT_PASSWORD_HASH;
+        console.log('[AUTH] Using hash:', passwordHash?.substring(0, 20) + '...');
         const isValid = await bcrypt.compare(credentials.password, passwordHash);
+        console.log('[AUTH] Password valid:', isValid);
 
         if (!isValid) {
           return null;
