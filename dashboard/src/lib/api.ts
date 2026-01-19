@@ -105,6 +105,33 @@ export interface LogsResponse {
   logs: ProcessLog[];
 }
 
+export interface Settings {
+  id: string;
+  youtubeEnabled: boolean;
+  youtubePrivacy: 'private' | 'unlisted' | 'public';
+  transcriptionEnabled: boolean;
+  transcriptionLanguage: string;
+  summaryEnabled: boolean;
+  summaryStyle: 'brief' | 'detailed';
+  sheetsEnabled: boolean;
+  notionEnabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TestResult {
+  success: boolean;
+  message: string;
+  accountId?: string;
+  models?: string[];
+}
+
+export interface ConnectionStatus {
+  zoom: { connected: boolean; message: string };
+  youtube: { connected: boolean; message: string };
+  openai: { connected: boolean; message: string };
+}
+
 // API Functions
 export const api = {
   /**
@@ -159,4 +186,42 @@ export const api = {
     const query = limit ? `?limit=${limit}` : '';
     return fetchApi<LogsResponse>(`/logs${query}`);
   },
+
+  /**
+   * 設定を取得
+   */
+  getSettings: () => fetchApi<Settings>('/settings'),
+
+  /**
+   * 設定を更新
+   */
+  updateSettings: (settings: Partial<Omit<Settings, 'id' | 'createdAt' | 'updatedAt'>>) =>
+    fetchApi<Settings>('/settings', {
+      method: 'PUT',
+      body: JSON.stringify(settings),
+    }),
+
+  /**
+   * Zoom接続テスト
+   */
+  testZoom: () =>
+    fetchApi<TestResult>('/test/zoom', { method: 'POST' }),
+
+  /**
+   * Google/YouTube接続テスト
+   */
+  testGoogle: () =>
+    fetchApi<TestResult>('/test/google', { method: 'POST' }),
+
+  /**
+   * OpenAI接続テスト
+   */
+  testOpenAI: () =>
+    fetchApi<TestResult>('/test/openai', { method: 'POST' }),
+
+  /**
+   * 接続状態一括取得
+   */
+  getConnectionStatus: () =>
+    fetchApi<ConnectionStatus>('/connection-status'),
 };

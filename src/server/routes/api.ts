@@ -5,6 +5,10 @@
 import { Router, Request, Response } from 'express';
 import { prisma } from '../../utils/db.js';
 import { getQueueStatus } from '../../queue/worker.js';
+import { zoomClient } from '../../services/zoom/client.js';
+import { youtubeClient } from '../../services/youtube/client.js';
+import { config } from '../../config/env.js';
+import OpenAI from 'openai';
 
 export const apiRouter = Router();
 
@@ -214,4 +218,204 @@ apiRouter.get('/logs', async (req: Request, res: Response) => {
     console.error('Logs API error:', error);
     res.status(500).json({ error: 'Failed to fetch logs' });
   }
+});
+
+/**
+ * 設定を取得
+ */
+apiRouter.get('/settings', async (_req: Request, res: Response) => {
+  try {
+    // 設定を取得（存在しない場合はデフォルト値で作成）
+    let settings = await prisma.settings.findUnique({
+      where: { id: 'default' },
+    });
+
+    if (!settings) {
+      settings = await prisma.settings.create({
+        data: { id: 'default' },
+      });
+    }
+
+    res.json(settings);
+  } catch (error) {
+    console.error('Settings GET error:', error);
+    res.status(500).json({ error: 'Failed to fetch settings' });
+  }
+});
+
+/**
+ * 設定を更新
+ */
+apiRouter.put('/settings', async (req: Request, res: Response) => {
+  try {
+    const {
+      youtubeEnabled,
+      youtubePrivacy,
+      transcriptionEnabled,
+      transcriptionLanguage,
+      summaryEnabled,
+      summaryStyle,
+      sheetsEnabled,
+      notionEnabled,
+    } = req.body;
+
+    const settings = await prisma.settings.upsert({
+      where: { id: 'default' },
+      update: {
+        youtubeEnabled,
+        youtubePrivacy,
+        transcriptionEnabled,
+        transcriptionLanguage,
+        summaryEnabled,
+        summaryStyle,
+        sheetsEnabled,
+        notionEnabled,
+      },
+      create: {
+        id: 'default',
+        youtubeEnabled,
+        youtubePrivacy,
+        transcriptionEnabled,
+        transcriptionLanguage,
+        summaryEnabled,
+        summaryStyle,
+        sheetsEnabled,
+        notionEnabled,
+      },
+    });
+
+    res.json(settings);
+  } catch (error) {
+    console.error('Settings PUT error:', error);
+    res.status(500).json({ error: 'Failed to update settings' });
+  }
+});
+
+/**
+ * Zoom接続テスト
+ */
+apiRouter.post('/test/zoom', async (_req: Request, res: Response) => {
+  try {
+    // アクセストークンを取得してZoom APIに接続テスト
+    const token = await zoomClient.getAccessToken();
+
+    if (token) {
+      res.json({
+        success: true,
+        message: 'Zoom API接続成功',
+        accountId: config.zoom.accountId.substring(0, 8) + '...',
+      });
+    } else {
+      res.json({
+        success: false,
+        message: 'Zoom APIトークン取得失敗',
+      });
+    }
+  } catch (error) {
+    console.error('Zoom test error:', error);
+    res.json({
+      success: false,
+      message: error instanceof Error ? error.message : 'Zoom API接続エラー',
+    });
+  }
+});
+
+/**
+ * YouTube/Google接続テスト
+ */
+apiRouter.post('/test/google', async (_req: Request, res: Response) => {
+  try {
+    const isAuthed = await youtubeClient.checkAuth();
+
+    if (isAuthed) {
+      res.json({
+        success: true,
+        message: 'YouTube API接続成功',
+      });
+    } else {
+      res.json({
+        success: false,
+        message: 'YouTube認証が必要です。サーバーで setup-google-auth.ts を実行してください。',
+      });
+    }
+  } catch (error) {
+    console.error('Google test error:', error);
+    res.json({
+      success: false,
+      message: error instanceof Error ? error.message : 'YouTube API接続エラー',
+    });
+  }
+});
+
+/**
+ * OpenAI接続テスト
+ */
+apiRouter.post('/test/openai', async (_req: Request, res: Response) => {
+  try {
+    const openai = new OpenAI({
+      apiKey: config.openai.apiKey,
+    });
+
+    // 簡単なAPIリクエストでテスト
+    const response = await openai.models.list();
+
+    if (response.data && response.data.length > 0) {
+      res.json({
+        success: true,
+        message: 'OpenAI API接続成功',
+        models: response.data.slice(0, 3).map((m) => m.id),
+      });
+    } else {
+      res.json({
+        success: false,
+        message: 'OpenAI APIレスポンスが空です',
+      });
+    }
+  } catch (error) {
+    console.error('OpenAI test error:', error);
+    res.json({
+      success: false,
+      message: error instanceof Error ? error.message : 'OpenAI API接続エラー',
+    });
+  }
+});
+
+/**
+ * 接続状態一括取得
+ */
+apiRouter.get('/connection-status', async (_req: Request, res: Response) => {
+  const results: Record<string, { connected: boolean; message: string }> = {};
+
+  // Zoom
+  try {
+    const token = await zoomClient.getAccessToken();
+    results.zoom = {
+      connected: !!token,
+      message: token ? '接続済み' : '未接続',
+    };
+  } catch {
+    results.zoom = { connected: false, message: '未接続' };
+  }
+
+  // YouTube
+  try {
+    const isAuthed = await youtubeClient.checkAuth();
+    results.youtube = {
+      connected: isAuthed,
+      message: isAuthed ? '接続済み' : '認証が必要',
+    };
+  } catch {
+    results.youtube = { connected: false, message: '未接続' };
+  }
+
+  // OpenAI
+  try {
+    const openai = new OpenAI({ apiKey: config.openai.apiKey });
+    await openai.models.list();
+    results.openai = { connected: true, message: '接続済み' };
+  } catch {
+    results.openai = { connected: false, message: '未接続' };
+  }
+
+  res.json(results);
 });

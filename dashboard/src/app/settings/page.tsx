@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
 import {
   Settings as SettingsIcon,
@@ -12,60 +12,60 @@ import {
   CheckCircle,
   AlertCircle,
   Loader2,
+  Video,
+  Zap,
+  RefreshCw,
+  Wifi,
+  WifiOff,
 } from 'lucide-react';
 import { DashboardLayout } from '@/components/DashboardLayout';
-
-interface SettingsState {
-  youtube: {
-    enabled: boolean;
-    privacyStatus: 'public' | 'unlisted' | 'private';
-  };
-  transcription: {
-    enabled: boolean;
-    language: string;
-  };
-  summary: {
-    enabled: boolean;
-    style: 'brief' | 'detailed';
-  };
-  sheets: {
-    enabled: boolean;
-    spreadsheetId: string;
-  };
-  notion: {
-    enabled: boolean;
-    databaseId: string;
-  };
-}
+import { api, Settings, ConnectionStatus } from '@/lib/api';
 
 export default function SettingsPage() {
   const { data: session } = useSession();
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [testingZoom, setTestingZoom] = useState(false);
+  const [testingGoogle, setTestingGoogle] = useState(false);
+  const [testingOpenAI, setTestingOpenAI] = useState(false);
+  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus | null>(null);
+  const [testResults, setTestResults] = useState<Record<string, { success: boolean; message: string }>>({});
 
-  const [settings, setSettings] = useState<SettingsState>({
-    youtube: {
-      enabled: true,
-      privacyStatus: 'unlisted',
-    },
-    transcription: {
-      enabled: true,
-      language: 'ja',
-    },
-    summary: {
-      enabled: true,
-      style: 'detailed',
-    },
-    sheets: {
-      enabled: true,
-      spreadsheetId: '',
-    },
-    notion: {
-      enabled: false,
-      databaseId: '',
-    },
+  const [settings, setSettings] = useState<Settings>({
+    id: 'default',
+    youtubeEnabled: true,
+    youtubePrivacy: 'unlisted',
+    transcriptionEnabled: true,
+    transcriptionLanguage: 'ja',
+    summaryEnabled: true,
+    summaryStyle: 'detailed',
+    sheetsEnabled: true,
+    notionEnabled: false,
+    createdAt: '',
+    updatedAt: '',
   });
+
+  // 設定と接続状態を取得
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const [settingsData, statusData] = await Promise.all([
+          api.getSettings(),
+          api.getConnectionStatus(),
+        ]);
+        setSettings(settingsData);
+        setConnectionStatus(statusData);
+      } catch (err) {
+        console.error('Failed to fetch settings:', err);
+        setError('設定の取得に失敗しました');
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchData();
+  }, []);
 
   const handleSave = async () => {
     setSaving(true);
@@ -73,8 +73,16 @@ export default function SettingsPage() {
     setSaved(false);
 
     try {
-      // TODO: APIを呼び出して設定を保存
-      await new Promise((resolve) => setTimeout(resolve, 1000)); // シミュレーション
+      await api.updateSettings({
+        youtubeEnabled: settings.youtubeEnabled,
+        youtubePrivacy: settings.youtubePrivacy,
+        transcriptionEnabled: settings.transcriptionEnabled,
+        transcriptionLanguage: settings.transcriptionLanguage,
+        summaryEnabled: settings.summaryEnabled,
+        summaryStyle: settings.summaryStyle,
+        sheetsEnabled: settings.sheetsEnabled,
+        notionEnabled: settings.notionEnabled,
+      });
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
     } catch (err) {
@@ -84,13 +92,84 @@ export default function SettingsPage() {
     }
   };
 
+  const handleTestZoom = async () => {
+    setTestingZoom(true);
+    try {
+      const result = await api.testZoom();
+      setTestResults(prev => ({ ...prev, zoom: result }));
+      if (result.success) {
+        setConnectionStatus(prev => prev ? {
+          ...prev,
+          zoom: { connected: true, message: '接続済み' }
+        } : null);
+      }
+    } catch (err) {
+      setTestResults(prev => ({ ...prev, zoom: { success: false, message: '接続テストに失敗しました' } }));
+    } finally {
+      setTestingZoom(false);
+    }
+  };
+
+  const handleTestGoogle = async () => {
+    setTestingGoogle(true);
+    try {
+      const result = await api.testGoogle();
+      setTestResults(prev => ({ ...prev, google: result }));
+      if (result.success) {
+        setConnectionStatus(prev => prev ? {
+          ...prev,
+          youtube: { connected: true, message: '接続済み' }
+        } : null);
+      }
+    } catch (err) {
+      setTestResults(prev => ({ ...prev, google: { success: false, message: '接続テストに失敗しました' } }));
+    } finally {
+      setTestingGoogle(false);
+    }
+  };
+
+  const handleTestOpenAI = async () => {
+    setTestingOpenAI(true);
+    try {
+      const result = await api.testOpenAI();
+      setTestResults(prev => ({ ...prev, openai: result }));
+      if (result.success) {
+        setConnectionStatus(prev => prev ? {
+          ...prev,
+          openai: { connected: true, message: '接続済み' }
+        } : null);
+      }
+    } catch (err) {
+      setTestResults(prev => ({ ...prev, openai: { success: false, message: '接続テストに失敗しました' } }));
+    } finally {
+      setTestingOpenAI(false);
+    }
+  };
+
+  const ConnectionIndicator = ({ connected, message }: { connected: boolean; message: string }) => (
+    <div className={`flex items-center text-sm ${connected ? 'text-green-600' : 'text-gray-400'}`}>
+      {connected ? <Wifi className="h-4 w-4 mr-1" /> : <WifiOff className="h-4 w-4 mr-1" />}
+      {message}
+    </div>
+  );
+
+  if (loading) {
+    return (
+      <DashboardLayout>
+        <div className="flex items-center justify-center h-96">
+          <Loader2 className="h-8 w-8 animate-spin text-primary-600" />
+        </div>
+      </DashboardLayout>
+    );
+  }
+
   return (
     <DashboardLayout>
       <div className="p-6">
         {/* ヘッダー */}
         <div className="mb-8">
           <h1 className="text-2xl font-bold text-gray-900">設定</h1>
-          <p className="text-gray-500 mt-1">自動処理の設定を管理</p>
+          <p className="text-gray-500 mt-1">自動処理の設定とAPI接続管理</p>
         </div>
 
         {/* 保存成功メッセージ */}
@@ -110,6 +189,116 @@ export default function SettingsPage() {
         )}
 
         <div className="space-y-6">
+          {/* API接続状態 */}
+          <div className="card">
+            <div className="card-header flex items-center">
+              <Zap className="h-5 w-5 text-yellow-500 mr-2" />
+              <h2 className="text-lg font-semibold text-gray-900">API接続状態</h2>
+            </div>
+            <div className="card-body">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {/* Zoom */}
+                <div className="p-4 border border-gray-200 rounded-lg">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center">
+                      <Video className="h-5 w-5 text-blue-500 mr-2" />
+                      <span className="font-medium">Zoom API</span>
+                    </div>
+                    {connectionStatus && (
+                      <ConnectionIndicator
+                        connected={connectionStatus.zoom.connected}
+                        message={connectionStatus.zoom.message}
+                      />
+                    )}
+                  </div>
+                  <button
+                    onClick={handleTestZoom}
+                    disabled={testingZoom}
+                    className="w-full mt-2 px-3 py-2 text-sm bg-gray-100 hover:bg-gray-200 rounded-lg flex items-center justify-center transition-colors disabled:opacity-50"
+                  >
+                    {testingZoom ? (
+                      <Loader2 className="h-4 w-4 animate-spin mr-1" />
+                    ) : (
+                      <RefreshCw className="h-4 w-4 mr-1" />
+                    )}
+                    接続テスト
+                  </button>
+                  {testResults.zoom && (
+                    <p className={`mt-2 text-xs ${testResults.zoom.success ? 'text-green-600' : 'text-red-600'}`}>
+                      {testResults.zoom.message}
+                    </p>
+                  )}
+                </div>
+
+                {/* YouTube */}
+                <div className="p-4 border border-gray-200 rounded-lg">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center">
+                      <Youtube className="h-5 w-5 text-red-500 mr-2" />
+                      <span className="font-medium">YouTube API</span>
+                    </div>
+                    {connectionStatus && (
+                      <ConnectionIndicator
+                        connected={connectionStatus.youtube.connected}
+                        message={connectionStatus.youtube.message}
+                      />
+                    )}
+                  </div>
+                  <button
+                    onClick={handleTestGoogle}
+                    disabled={testingGoogle}
+                    className="w-full mt-2 px-3 py-2 text-sm bg-gray-100 hover:bg-gray-200 rounded-lg flex items-center justify-center transition-colors disabled:opacity-50"
+                  >
+                    {testingGoogle ? (
+                      <Loader2 className="h-4 w-4 animate-spin mr-1" />
+                    ) : (
+                      <RefreshCw className="h-4 w-4 mr-1" />
+                    )}
+                    接続テスト
+                  </button>
+                  {testResults.google && (
+                    <p className={`mt-2 text-xs ${testResults.google.success ? 'text-green-600' : 'text-red-600'}`}>
+                      {testResults.google.message}
+                    </p>
+                  )}
+                </div>
+
+                {/* OpenAI */}
+                <div className="p-4 border border-gray-200 rounded-lg">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center">
+                      <Zap className="h-5 w-5 text-green-500 mr-2" />
+                      <span className="font-medium">OpenAI API</span>
+                    </div>
+                    {connectionStatus && (
+                      <ConnectionIndicator
+                        connected={connectionStatus.openai.connected}
+                        message={connectionStatus.openai.message}
+                      />
+                    )}
+                  </div>
+                  <button
+                    onClick={handleTestOpenAI}
+                    disabled={testingOpenAI}
+                    className="w-full mt-2 px-3 py-2 text-sm bg-gray-100 hover:bg-gray-200 rounded-lg flex items-center justify-center transition-colors disabled:opacity-50"
+                  >
+                    {testingOpenAI ? (
+                      <Loader2 className="h-4 w-4 animate-spin mr-1" />
+                    ) : (
+                      <RefreshCw className="h-4 w-4 mr-1" />
+                    )}
+                    接続テスト
+                  </button>
+                  {testResults.openai && (
+                    <p className={`mt-2 text-xs ${testResults.openai.success ? 'text-green-600' : 'text-red-600'}`}>
+                      {testResults.openai.message}
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+
           {/* YouTube設定 */}
           <div className="card">
             <div className="card-header flex items-center">
@@ -125,11 +314,11 @@ export default function SettingsPage() {
                 <label className="relative inline-flex items-center cursor-pointer">
                   <input
                     type="checkbox"
-                    checked={settings.youtube.enabled}
+                    checked={settings.youtubeEnabled}
                     onChange={(e) =>
                       setSettings({
                         ...settings,
-                        youtube: { ...settings.youtube, enabled: e.target.checked },
+                        youtubeEnabled: e.target.checked,
                       })
                     }
                     className="sr-only peer"
@@ -138,20 +327,17 @@ export default function SettingsPage() {
                 </label>
               </div>
 
-              {settings.youtube.enabled && (
+              {settings.youtubeEnabled && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     公開設定
                   </label>
                   <select
-                    value={settings.youtube.privacyStatus}
+                    value={settings.youtubePrivacy}
                     onChange={(e) =>
                       setSettings({
                         ...settings,
-                        youtube: {
-                          ...settings.youtube,
-                          privacyStatus: e.target.value as 'public' | 'unlisted' | 'private',
-                        },
+                        youtubePrivacy: e.target.value as 'public' | 'unlisted' | 'private',
                       })
                     }
                     className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
@@ -180,11 +366,11 @@ export default function SettingsPage() {
                 <label className="relative inline-flex items-center cursor-pointer">
                   <input
                     type="checkbox"
-                    checked={settings.transcription.enabled}
+                    checked={settings.transcriptionEnabled}
                     onChange={(e) =>
                       setSettings({
                         ...settings,
-                        transcription: { ...settings.transcription, enabled: e.target.checked },
+                        transcriptionEnabled: e.target.checked,
                       })
                     }
                     className="sr-only peer"
@@ -193,17 +379,17 @@ export default function SettingsPage() {
                 </label>
               </div>
 
-              {settings.transcription.enabled && (
+              {settings.transcriptionEnabled && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     言語
                   </label>
                   <select
-                    value={settings.transcription.language}
+                    value={settings.transcriptionLanguage}
                     onChange={(e) =>
                       setSettings({
                         ...settings,
-                        transcription: { ...settings.transcription, language: e.target.value },
+                        transcriptionLanguage: e.target.value,
                       })
                     }
                     className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
@@ -232,11 +418,11 @@ export default function SettingsPage() {
                 <label className="relative inline-flex items-center cursor-pointer">
                   <input
                     type="checkbox"
-                    checked={settings.summary.enabled}
+                    checked={settings.summaryEnabled}
                     onChange={(e) =>
                       setSettings({
                         ...settings,
-                        summary: { ...settings.summary, enabled: e.target.checked },
+                        summaryEnabled: e.target.checked,
                       })
                     }
                     className="sr-only peer"
@@ -245,20 +431,17 @@ export default function SettingsPage() {
                 </label>
               </div>
 
-              {settings.summary.enabled && (
+              {settings.summaryEnabled && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     要約スタイル
                   </label>
                   <select
-                    value={settings.summary.style}
+                    value={settings.summaryStyle}
                     onChange={(e) =>
                       setSettings({
                         ...settings,
-                        summary: {
-                          ...settings.summary,
-                          style: e.target.value as 'brief' | 'detailed',
-                        },
+                        summaryStyle: e.target.value as 'brief' | 'detailed',
                       })
                     }
                     className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
@@ -286,11 +469,11 @@ export default function SettingsPage() {
                 <label className="relative inline-flex items-center cursor-pointer">
                   <input
                     type="checkbox"
-                    checked={settings.sheets.enabled}
+                    checked={settings.sheetsEnabled}
                     onChange={(e) =>
                       setSettings({
                         ...settings,
-                        sheets: { ...settings.sheets, enabled: e.target.checked },
+                        sheetsEnabled: e.target.checked,
                       })
                     }
                     className="sr-only peer"
@@ -298,29 +481,9 @@ export default function SettingsPage() {
                   <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-600"></div>
                 </label>
               </div>
-
-              {settings.sheets.enabled && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    スプレッドシートID
-                  </label>
-                  <input
-                    type="text"
-                    value={settings.sheets.spreadsheetId}
-                    onChange={(e) =>
-                      setSettings({
-                        ...settings,
-                        sheets: { ...settings.sheets, spreadsheetId: e.target.value },
-                      })
-                    }
-                    placeholder="1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms"
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                  />
-                  <p className="mt-1 text-xs text-gray-500">
-                    スプレッドシートURLからIDをコピーしてください
-                  </p>
-                </div>
-              )}
+              <p className="text-xs text-gray-500">
+                スプレッドシートIDは環境変数で設定してください
+              </p>
             </div>
           </div>
 
@@ -339,11 +502,11 @@ export default function SettingsPage() {
                 <label className="relative inline-flex items-center cursor-pointer">
                   <input
                     type="checkbox"
-                    checked={settings.notion.enabled}
+                    checked={settings.notionEnabled}
                     onChange={(e) =>
                       setSettings({
                         ...settings,
-                        notion: { ...settings.notion, enabled: e.target.checked },
+                        notionEnabled: e.target.checked,
                       })
                     }
                     className="sr-only peer"
@@ -351,29 +514,9 @@ export default function SettingsPage() {
                   <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-600"></div>
                 </label>
               </div>
-
-              {settings.notion.enabled && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    データベースID
-                  </label>
-                  <input
-                    type="text"
-                    value={settings.notion.databaseId}
-                    onChange={(e) =>
-                      setSettings({
-                        ...settings,
-                        notion: { ...settings.notion, databaseId: e.target.value },
-                      })
-                    }
-                    placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                  />
-                  <p className="mt-1 text-xs text-gray-500">
-                    NotionデータベースのURLからIDをコピーしてください
-                  </p>
-                </div>
-              )}
+              <p className="text-xs text-gray-500">
+                NotionのAPI KeyとDatabase IDは環境変数で設定してください
+              </p>
             </div>
           </div>
 

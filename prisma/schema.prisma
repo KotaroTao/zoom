@@ -91,3 +91,31 @@ model ProcessLog {
 
   @@index([recordingId])
 }
+
+// -------------------------------------------
+// アプリケーション設定
+// -------------------------------------------
+model Settings {
+  id          String   @id @default("default")
+
+  // YouTube設定
+  youtubeEnabled       Boolean @default(true)
+  youtubePrivacy       String  @default("unlisted") // private, unlisted, public
+
+  // 文字起こし設定
+  transcriptionEnabled Boolean @default(true)
+  transcriptionLanguage String @default("ja")
+
+  // 要約設定
+  summaryEnabled       Boolean @default(true)
+  summaryStyle         String  @default("detailed") // brief, detailed
+
+  // Google Sheets設定
+  sheetsEnabled        Boolean @default(true)
+
+  // Notion設定
+  notionEnabled        Boolean @default(false)
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
