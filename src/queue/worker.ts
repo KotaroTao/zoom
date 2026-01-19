@@ -18,6 +18,7 @@ import type { ProcessingJob } from '../types/index.js';
 
 // サービスのインポート
 import { downloadRecordingFile } from '../services/zoom/download.js';
+import { zoomClient } from '../services/zoom/client.js';
 import { uploadToYouTube } from '../services/youtube/upload.js';
 import { transcribeWithWhisper } from '../services/transcription/whisper.js';
 import { generateSummary } from '../services/summary/openai.js';
@@ -107,12 +108,39 @@ async function processRecording(job: Job<ProcessingJob>): Promise<void> {
     stepLogger.start('DOWNLOAD', recordingId, { zoomMeetingId });
     await job.updateProgress(10);
 
-    if (downloadUrl) {
+    // Zoom APIから最新の録画情報を取得（Webhookの古いURLではなく）
+    let actualDownloadUrl = downloadUrl;
+    try {
+      const meetingUuid = job.data.zoomMeetingUuid;
+      if (meetingUuid) {
+        logger.info('Zoom APIから録画情報を取得中...', { meetingUuid });
+        const recordingDetails = await zoomClient.getRecordingDetails(meetingUuid);
+
+        // MP4ファイルを探す
+        const mp4File = recordingDetails.recording_files?.find(
+          (f: { file_type: string; recording_type?: string }) =>
+            f.file_type === 'MP4' && f.recording_type === 'shared_screen_with_speaker_view'
+        ) || recordingDetails.recording_files?.find(
+          (f: { file_type: string }) => f.file_type === 'MP4'
+        );
+
+        if (mp4File && mp4File.download_url) {
+          actualDownloadUrl = mp4File.download_url;
+          logger.info('Zoom APIからダウンロードURL取得成功');
+        }
+      }
+    } catch (apiError) {
+      logger.warn('Zoom APIからの取得失敗、Webhookのダウンロードを試行', {
+        error: apiError instanceof Error ? apiError.message : String(apiError)
+      });
+    }
+
+    if (actualDownloadUrl) {
       const downloadResult = await downloadRecordingFile({
         fileId: zoomMeetingId,
         fileType: 'MP4',
         recordingType: 'shared_screen_with_speaker_view',
-        downloadUrl,
+        downloadUrl: actualDownloadUrl,
         fileSize: 0,
         fileName: `${recordingId}.mp4`,
       });
