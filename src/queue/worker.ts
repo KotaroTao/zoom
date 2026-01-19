@@ -24,7 +24,8 @@ import { uploadToYouTube } from '../services/youtube/upload.js';
 import { transcribeWithWhisper } from '../services/transcription/whisper.js';
 import { generateSummary } from '../services/summary/openai.js';
 import { appendRow } from '../services/sheets/client.js';
-import { createMeetingPage, isNotionEnabled } from '../services/notion/client.js';
+import { createMeetingPageWithCredentials } from '../services/notion/client.js';
+import { getCredentials } from '../utils/credentials.js';
 
 // Redis接続設定（ioredisインスタンスではなく設定オブジェクトを使用）
 const connection = {
@@ -314,9 +315,12 @@ async function processRecording(job: Job<ProcessingJob>): Promise<void> {
     stepLogger.start('SYNC', recordingId);
     await job.updateProgress(90);
 
+    // DBから認証情報を取得
+    const credentials = await getCredentials();
+
     // Google Sheets に追加
-    if (config.google.spreadsheetId) {
-      const sheetResult = await appendRow(config.google.spreadsheetId, {
+    if (credentials.googleSpreadsheetId) {
+      const sheetResult = await appendRow(credentials.googleSpreadsheetId, {
         title,
         clientName,
         meetingDate: meetingDate ? new Date(meetingDate) : new Date(),
@@ -333,27 +337,35 @@ async function processRecording(job: Job<ProcessingJob>): Promise<void> {
       } else {
         logger.error('Google Sheets追加失敗', { error: sheetResult.error });
       }
+    } else {
+      logger.debug('Google Sheets連携はスキップ（スプレッドシートID未設定）');
     }
 
     // Notion に追加
-    if (isNotionEnabled()) {
-      const notionResult = await createMeetingPage({
-        title,
-        clientName,
-        meetingDate: meetingDate ? new Date(meetingDate) : new Date(),
-        youtubeUrl,
-        summary,
-        zoomUrl,
-        duration,
-        hostEmail,
-        status: 'completed',
-      });
+    if (credentials.notionApiKey && credentials.notionDatabaseId) {
+      const notionResult = await createMeetingPageWithCredentials(
+        {
+          title,
+          clientName,
+          meetingDate: meetingDate ? new Date(meetingDate) : new Date(),
+          youtubeUrl,
+          summary,
+          zoomUrl,
+          duration,
+          hostEmail,
+          status: 'completed',
+        },
+        credentials.notionApiKey,
+        credentials.notionDatabaseId
+      );
 
       if (notionResult.success) {
         logger.info('Notionページ作成完了', { pageUrl: notionResult.pageUrl });
       } else {
         logger.error('Notionページ作成失敗', { error: notionResult.error });
       }
+    } else {
+      logger.debug('Notion連携はスキップ（認証情報未設定）');
     }
 
     stepLogger.complete('SYNC', recordingId);
