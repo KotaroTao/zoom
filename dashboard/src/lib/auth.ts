@@ -43,14 +43,21 @@ declare module 'next-auth/jwt' {
   }
 }
 
+// Google OAuth が設定されているかチェック
+const isGoogleOAuthConfigured = !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
+
 export const authOptions: NextAuthOptions = {
   providers: [
-    // Google OAuth
-    GoogleProvider({
-      clientId: process.env.GOOGLE_CLIENT_ID || '',
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET || '',
-      allowDangerousEmailAccountLinking: true, // 同じメールでの認証方法切り替えを許可
-    }),
+    // Google OAuth（設定されている場合のみ）
+    ...(isGoogleOAuthConfigured
+      ? [
+          GoogleProvider({
+            clientId: process.env.GOOGLE_CLIENT_ID!,
+            clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+            allowDangerousEmailAccountLinking: true, // 同じメールでの認証方法切り替えを許可
+          }),
+        ]
+      : []),
 
     // メール/パスワード認証
     CredentialsProvider({
