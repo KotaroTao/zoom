@@ -35,6 +35,7 @@ export default function SettingsPage() {
   const [testingZoom, setTestingZoom] = useState(false);
   const [testingGoogle, setTestingGoogle] = useState(false);
   const [testingOpenAI, setTestingOpenAI] = useState(false);
+  const [testingNotion, setTestingNotion] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus | null>(null);
   const [testResults, setTestResults] = useState<Record<string, { success: boolean; message: string }>>({});
   const [showSecrets, setShowSecrets] = useState<Record<string, boolean>>({});
@@ -57,6 +58,8 @@ export default function SettingsPage() {
     googleClientId: null,
     googleClientSecret: null,
     googleSpreadsheetId: null,
+    notionApiKey: null,
+    notionDatabaseId: null,
     createdAt: '',
     updatedAt: '',
   });
@@ -71,6 +74,8 @@ export default function SettingsPage() {
     googleClientId: '',
     googleClientSecret: '',
     googleSpreadsheetId: '',
+    notionApiKey: '',
+    notionDatabaseId: '',
   });
 
   // 設定と接続状態を取得
@@ -139,6 +144,8 @@ export default function SettingsPage() {
           googleClientId: result.googleClientId,
           googleClientSecret: result.googleClientSecret,
           googleSpreadsheetId: result.googleSpreadsheetId,
+          notionApiKey: result.notionApiKey,
+          notionDatabaseId: result.notionDatabaseId,
         }));
         // 入力フォームをクリア
         setCredentials({
@@ -150,6 +157,8 @@ export default function SettingsPage() {
           googleClientId: '',
           googleClientSecret: '',
           googleSpreadsheetId: '',
+          notionApiKey: '',
+          notionDatabaseId: '',
         });
         // 接続状態を再取得
         const statusData = await api.getConnectionStatus();
@@ -213,6 +222,24 @@ export default function SettingsPage() {
       setTestResults(prev => ({ ...prev, openai: { success: false, message: '接続テストに失敗しました' } }));
     } finally {
       setTestingOpenAI(false);
+    }
+  };
+
+  const handleTestNotion = async () => {
+    setTestingNotion(true);
+    try {
+      const result = await api.testNotion();
+      setTestResults(prev => ({ ...prev, notion: result }));
+      if (result.success) {
+        setConnectionStatus(prev => prev ? {
+          ...prev,
+          notion: { connected: true, message: '接続済み', configured: true }
+        } : null);
+      }
+    } catch (err) {
+      setTestResults(prev => ({ ...prev, notion: { success: false, message: '接続テストに失敗しました' } }));
+    } finally {
+      setTestingNotion(false);
     }
   };
 
@@ -526,6 +553,82 @@ export default function SettingsPage() {
                 </div>
                 <p className="mt-2 text-xs text-gray-500">
                   YouTube認証にはサーバーでの初回認証が必要です。認証後に接続テストを実行してください。
+                </p>
+              </div>
+
+              {/* Notion API */}
+              <div className="border-t pt-4">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center">
+                    <BookOpen className="h-5 w-5 text-gray-700 mr-2" />
+                    <h3 className="font-medium text-gray-900">Notion API</h3>
+                  </div>
+                  {connectionStatus && connectionStatus.notion && (
+                    <ConnectionIndicator
+                      connected={connectionStatus.notion.connected}
+                      configured={connectionStatus.notion.configured}
+                      message={connectionStatus.notion.message}
+                    />
+                  )}
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      API Key (Integration Token)
+                      {settings.notionApiKey && (
+                        <span className="ml-2 text-xs text-gray-500">現在: {settings.notionApiKey}</span>
+                      )}
+                    </label>
+                    <div className="relative">
+                      <input
+                        type={showSecrets['notionApiKey'] ? 'text' : 'password'}
+                        value={credentials.notionApiKey || ''}
+                        onChange={(e) => setCredentials({ ...credentials, notionApiKey: e.target.value })}
+                        placeholder="secret_..."
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 pr-10 focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => toggleShowSecret('notionApiKey')}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                      >
+                        {showSecrets['notionApiKey'] ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </button>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Database ID
+                      {settings.notionDatabaseId && (
+                        <span className="ml-2 text-xs text-gray-500">現在: {settings.notionDatabaseId}</span>
+                      )}
+                    </label>
+                    <input
+                      type="text"
+                      value={credentials.notionDatabaseId || ''}
+                      onChange={(e) => setCredentials({ ...credentials, notionDatabaseId: e.target.value })}
+                      placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                    />
+                  </div>
+                </div>
+                <div className="mt-3 flex items-center gap-2">
+                  <button
+                    onClick={handleTestNotion}
+                    disabled={testingNotion}
+                    className="px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 rounded-lg flex items-center transition-colors disabled:opacity-50"
+                  >
+                    {testingNotion ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <RefreshCw className="h-4 w-4 mr-1" />}
+                    接続テスト
+                  </button>
+                  {testResults.notion && (
+                    <span className={`text-sm ${testResults.notion.success ? 'text-green-600' : 'text-red-600'}`}>
+                      {testResults.notion.message}
+                    </span>
+                  )}
+                </div>
+                <p className="mt-2 text-xs text-gray-500">
+                  Notion Integrations (https://www.notion.so/my-integrations) でトークンを作成し、対象データベースに接続を許可してください。
                 </p>
               </div>
 

@@ -124,6 +124,8 @@ export interface Settings {
   googleClientId: string | null;
   googleClientSecret: string | null;
   googleSpreadsheetId: string | null;
+  notionApiKey: string | null;
+  notionDatabaseId: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -137,6 +139,8 @@ export interface Credentials {
   googleClientId?: string;
   googleClientSecret?: string;
   googleSpreadsheetId?: string;
+  notionApiKey?: string;
+  notionDatabaseId?: string;
 }
 
 export interface CredentialsResponse {
@@ -150,6 +154,8 @@ export interface CredentialsResponse {
   googleClientId: string | null;
   googleClientSecret: string | null;
   googleSpreadsheetId: string | null;
+  notionApiKey: string | null;
+  notionDatabaseId: string | null;
 }
 
 export interface TestResult {
@@ -163,6 +169,7 @@ export interface ConnectionStatus {
   zoom: { connected: boolean; message: string; configured: boolean };
   youtube: { connected: boolean; message: string; configured: boolean };
   openai: { connected: boolean; message: string; configured: boolean };
+  notion: { connected: boolean; message: string; configured: boolean };
 }
 
 // API Functions
@@ -251,6 +258,12 @@ export const api = {
    */
   testOpenAI: () =>
     fetchApi<TestResult>('/test/openai', { method: 'POST' }),
+
+  /**
+   * Notion接続テスト
+   */
+  testNotion: () =>
+    fetchApi<TestResult>('/test/notion', { method: 'POST' }),
 
   /**
    * 接続状態一括取得

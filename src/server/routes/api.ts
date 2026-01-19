@@ -256,6 +256,8 @@ apiRouter.get('/settings', async (_req: Request, res: Response) => {
       googleClientId: maskSecret(settings.googleClientId),
       googleClientSecret: maskSecret(settings.googleClientSecret),
       // SpreadsheetIDはマスクしない（機密性が低い）
+      notionApiKey: maskSecret(settings.notionApiKey),
+      // notionDatabaseIdはマスクしない（機密性が低い）
     };
 
     res.json(maskedSettings);
@@ -327,6 +329,8 @@ apiRouter.put('/settings/credentials', async (req: Request, res: Response) => {
       googleClientId,
       googleClientSecret,
       googleSpreadsheetId,
+      notionApiKey,
+      notionDatabaseId,
     } = req.body;
 
     // 空文字列の場合はnullに変換（既存の値を消去しない）
@@ -356,6 +360,12 @@ apiRouter.put('/settings/credentials', async (req: Request, res: Response) => {
     if (googleSpreadsheetId !== undefined && googleSpreadsheetId !== '') {
       updateData.googleSpreadsheetId = googleSpreadsheetId;
     }
+    if (notionApiKey !== undefined && notionApiKey !== '') {
+      updateData.notionApiKey = notionApiKey;
+    }
+    if (notionDatabaseId !== undefined && notionDatabaseId !== '') {
+      updateData.notionDatabaseId = notionDatabaseId;
+    }
 
     const settings = await prisma.settings.upsert({
       where: { id: 'default' },
@@ -378,6 +388,8 @@ apiRouter.put('/settings/credentials', async (req: Request, res: Response) => {
       googleClientId: maskSecret(settings.googleClientId),
       googleClientSecret: maskSecret(settings.googleClientSecret),
       googleSpreadsheetId: settings.googleSpreadsheetId,
+      notionApiKey: maskSecret(settings.notionApiKey),
+      notionDatabaseId: settings.notionDatabaseId,
     });
   } catch (error) {
     console.error('Credentials PUT error:', error);
@@ -522,6 +534,63 @@ apiRouter.post('/test/openai', async (_req: Request, res: Response) => {
 });
 
 /**
+ * Notion接続テスト（DB認証情報を使用）
+ */
+apiRouter.post('/test/notion', async (_req: Request, res: Response) => {
+  try {
+    // DBから認証情報を取得
+    const dbSettings = await getCredentialsFromDB();
+    const apiKey = dbSettings?.notionApiKey;
+    const databaseId = dbSettings?.notionDatabaseId;
+
+    if (!apiKey) {
+      return res.json({
+        success: false,
+        message: 'Notion API Keyが設定されていません',
+      });
+    }
+
+    if (!databaseId) {
+      return res.json({
+        success: false,
+        message: 'Notion Database IDが設定されていません',
+      });
+    }
+
+    // Notion API でデータベース情報を取得してテスト
+    const response = await fetch(`https://api.notion.com/v1/databases/${databaseId}`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Notion-Version': '2022-06-28',
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (response.ok) {
+      const data = await response.json() as { title?: Array<{ plain_text: string }> };
+      const dbTitle = data.title?.[0]?.plain_text || 'Unknown';
+      res.json({
+        success: true,
+        message: `Notion接続成功: ${dbTitle}`,
+      });
+    } else {
+      const errorData = await response.json() as { message?: string };
+      res.json({
+        success: false,
+        message: `Notion APIエラー: ${errorData.message || response.statusText}`,
+      });
+    }
+  } catch (error) {
+    console.error('Notion test error:', error);
+    res.json({
+      success: false,
+      message: error instanceof Error ? error.message : 'Notion API接続エラー',
+    });
+  }
+});
+
+/**
  * 接続状態一括取得（DB認証情報を優先）
  */
 apiRouter.get('/connection-status', async (_req: Request, res: Response) => {
@@ -555,6 +624,14 @@ apiRouter.get('/connection-status', async (_req: Request, res: Response) => {
     connected: false,
     message: openaiConfigured ? '設定済み' : '未設定',
     configured: openaiConfigured,
+  };
+
+  // Notion
+  const notionConfigured = !!(dbSettings?.notionApiKey && dbSettings?.notionDatabaseId);
+  results.notion = {
+    connected: false,
+    message: notionConfigured ? '設定済み' : '未設定',
+    configured: notionConfigured,
   };
 
   res.json(results);

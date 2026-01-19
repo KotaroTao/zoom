@@ -33,6 +33,8 @@ const VALID_KEYS = [
   'googleClientId',
   'googleClientSecret',
   'googleSpreadsheetId',
+  'notionApiKey',
+  'notionDatabaseId',
 ];
 
 function main(): void {

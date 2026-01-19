@@ -130,6 +130,10 @@ model Settings {
   googleClientSecret   String?
   googleSpreadsheetId  String?
 
+  // Notion API認証情報
+  notionApiKey         String?
+  notionDatabaseId     String?
+
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
