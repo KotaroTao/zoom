@@ -46,6 +46,9 @@ declare module 'next-auth/jwt' {
 // Google OAuth が設定されているかチェック
 const isGoogleOAuthConfigured = !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
 
+// basePath設定（next.config.jsと同期が必要）
+const basePath = '/zoom';
+
 export const authOptions: NextAuthOptions = {
   providers: [
     // Google OAuth（設定されている場合のみ）
@@ -121,9 +124,9 @@ export const authOptions: NextAuthOptions = {
   },
 
   pages: {
-    signIn: '/login',
-    error: '/login',
-    newUser: '/onboarding', // 新規ユーザーのリダイレクト先
+    signIn: `${basePath}/login`,
+    error: `${basePath}/login`,
+    newUser: `${basePath}/onboarding`, // 新規ユーザーのリダイレクト先
   },
 
   callbacks: {

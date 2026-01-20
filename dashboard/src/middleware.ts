@@ -1,6 +1,9 @@
 import { withAuth } from 'next-auth/middleware';
 import { NextResponse } from 'next/server';
 
+// basePath設定（next.config.jsと同期が必要）
+const basePath = '/zoom';
+
 export default withAuth(
   function middleware(req) {
     const token = req.nextauth.token;
@@ -10,7 +13,9 @@ export default withAuth(
     if (pathname === '/onboarding') {
       // 認証済みで組織に所属している場合はダッシュボードへ
       if (token?.organizationId) {
-        return NextResponse.redirect(new URL('/', req.url));
+        const url = req.nextUrl.clone();
+        url.pathname = `${basePath}/`;
+        return NextResponse.redirect(url);
       }
       return NextResponse.next();
     }
@@ -18,21 +23,23 @@ export default withAuth(
     // ダッシュボードへのアクセス（オンボーディング以外）
     // 認証済みだが組織未所属の場合はオンボーディングへ
     if (token && !token.organizationId && pathname !== '/onboarding') {
-      return NextResponse.redirect(new URL('/onboarding', req.url));
+      const url = req.nextUrl.clone();
+      url.pathname = `${basePath}/onboarding`;
+      return NextResponse.redirect(url);
     }
 
     return NextResponse.next();
   },
   {
     pages: {
-      signIn: '/login',
+      signIn: `${basePath}/login`,
     },
     callbacks: {
       // オンボーディングは認証必須
       authorized: ({ token, req }) => {
         const { pathname } = req.nextUrl;
 
-        // 公開ページ
+        // 公開ページ（認証不要）
         if (pathname === '/login' || pathname === '/register' || pathname === '/error') {
           return true;
         }
@@ -40,6 +47,12 @@ export default withAuth(
         // 招待ページは認証不要（ページ内でログインを促す）
         if (pathname.startsWith('/invite/')) {
           return true;
+        }
+
+        // オンボーディングページは認証必須（ページ内でセッションチェック）
+        // Note: 認証されていない場合はログインページにリダイレクト
+        if (pathname === '/onboarding') {
+          return !!token;
         }
 
         // それ以外は認証必須
