@@ -39,6 +39,7 @@ export default function OnboardingPage() {
       const res = await fetch('/zoom/api/organizations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ name: orgName }),
       });
 
