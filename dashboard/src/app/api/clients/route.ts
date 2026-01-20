@@ -6,6 +6,13 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { getAuthContext, unauthorizedResponse } from '@/lib/api-auth';
 
+interface ClientInfo {
+  name: string | null;
+  recordingCount: number;
+  totalDuration: number;
+  lastMeetingDate: Date | null;
+}
+
 export async function GET() {
   const auth = await getAuthContext();
   if (!auth) {
@@ -27,7 +34,12 @@ export async function GET() {
       _max: { meetingDate: true },
     });
 
-    const clients = clientStats.map((stat) => ({
+    const clients: ClientInfo[] = clientStats.map((stat: {
+      clientName: string | null;
+      _count: { id: number };
+      _sum: { duration: number | null };
+      _max: { meetingDate: Date | null };
+    }) => ({
       name: stat.clientName,
       recordingCount: stat._count.id,
       totalDuration: stat._sum.duration || 0,
@@ -35,7 +47,7 @@ export async function GET() {
     }));
 
     // 録画数で降順ソート
-    clients.sort((a, b) => b.recordingCount - a.recordingCount);
+    clients.sort((a: ClientInfo, b: ClientInfo) => b.recordingCount - a.recordingCount);
 
     return NextResponse.json({ clients });
   } catch (error) {

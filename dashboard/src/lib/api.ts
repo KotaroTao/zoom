@@ -5,8 +5,8 @@
  * ダッシュボードのNext.js API Routesを使用
  */
 
-// ダッシュボードAPIのベースパス
-const API_BASE = '/api';
+// ダッシュボードAPIのベースパス（basePath対応）
+const API_BASE = '/zoom/api';
 
 /**
  * APIリクエスト用ヘルパー
@@ -16,6 +16,7 @@ async function fetchApi<T>(endpoint: string, options?: RequestInit): Promise<T> 
 
   const response = await fetch(url, {
     ...options,
+    credentials: 'include',
     headers: {
       'Content-Type': 'application/json',
       ...options?.headers,

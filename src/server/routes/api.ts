@@ -231,18 +231,16 @@ function maskSecret(value: string | null | undefined): string | null {
 
 /**
  * 設定を取得（機密情報はマスク）
+ * マルチテナント対応: 最初の組織の設定を取得
  */
 apiRouter.get('/settings', async (_req: Request, res: Response) => {
   try {
-    // 設定を取得（存在しない場合はデフォルト値で作成）
-    let settings = await prisma.settings.findUnique({
-      where: { id: 'default' },
-    });
+    // 最初の組織の設定を取得
+    const settings = await prisma.settings.findFirst();
 
     if (!settings) {
-      settings = await prisma.settings.create({
-        data: { id: 'default' },
-      });
+      res.status(404).json({ error: '設定が見つかりません。ダッシュボードで組織を作成してください。' });
+      return;
     }
 
     // 機密情報をマスクして返す
@@ -255,9 +253,7 @@ apiRouter.get('/settings', async (_req: Request, res: Response) => {
       openaiApiKey: maskSecret(settings.openaiApiKey),
       googleClientId: maskSecret(settings.googleClientId),
       googleClientSecret: maskSecret(settings.googleClientSecret),
-      // SpreadsheetIDはマスクしない（機密性が低い）
       notionApiKey: maskSecret(settings.notionApiKey),
-      // notionDatabaseIdはマスクしない（機密性が低い）
     };
 
     res.json(maskedSettings);
@@ -269,6 +265,7 @@ apiRouter.get('/settings', async (_req: Request, res: Response) => {
 
 /**
  * 設定を更新
+ * マルチテナント対応: 最初の組織の設定を更新
  */
 apiRouter.put('/settings', async (req: Request, res: Response) => {
   try {
@@ -283,20 +280,16 @@ apiRouter.put('/settings', async (req: Request, res: Response) => {
       notionEnabled,
     } = req.body;
 
-    const settings = await prisma.settings.upsert({
-      where: { id: 'default' },
-      update: {
-        youtubeEnabled,
-        youtubePrivacy,
-        transcriptionEnabled,
-        transcriptionLanguage,
-        summaryEnabled,
-        summaryStyle,
-        sheetsEnabled,
-        notionEnabled,
-      },
-      create: {
-        id: 'default',
+    // 最初の設定を取得
+    const existingSettings = await prisma.settings.findFirst();
+    if (!existingSettings) {
+      res.status(404).json({ error: '設定が見つかりません。ダッシュボードで組織を作成してください。' });
+      return;
+    }
+
+    const settings = await prisma.settings.update({
+      where: { id: existingSettings.id },
+      data: {
         youtubeEnabled,
         youtubePrivacy,
         transcriptionEnabled,
@@ -367,13 +360,16 @@ apiRouter.put('/settings/credentials', async (req: Request, res: Response) => {
       updateData.notionDatabaseId = notionDatabaseId;
     }
 
-    const settings = await prisma.settings.upsert({
-      where: { id: 'default' },
-      update: updateData,
-      create: {
-        id: 'default',
-        ...updateData,
-      },
+    // 最初の設定を取得
+    const existingSettings = await prisma.settings.findFirst();
+    if (!existingSettings) {
+      res.status(404).json({ error: '設定が見つかりません。ダッシュボードで組織を作成してください。' });
+      return;
+    }
+
+    const settings = await prisma.settings.update({
+      where: { id: existingSettings.id },
+      data: updateData,
     });
 
     // マスクして返す
@@ -399,11 +395,11 @@ apiRouter.put('/settings/credentials', async (req: Request, res: Response) => {
 
 /**
  * DBから認証情報を取得するヘルパー関数
+ * マルチテナント対応: 最初の組織の設定を取得
  */
 async function getCredentialsFromDB() {
-  const settings = await prisma.settings.findUnique({
-    where: { id: 'default' },
-  });
+  // 組織ベースの設定を取得（最初の組織）
+  const settings = await prisma.settings.findFirst();
   return settings;
 }
 

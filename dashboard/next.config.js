@@ -9,6 +9,9 @@ const nextConfig = {
   // 本番ビルド設定
   output: 'standalone',
 
+  // トレイリングスラッシュを有効化（一貫したURL処理のため）
+  trailingSlash: false,
+
   // バックエンドAPIへのプロキシ & OAuth callbackリダイレクト
   async rewrites() {
     return [

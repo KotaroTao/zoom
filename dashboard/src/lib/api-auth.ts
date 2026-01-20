@@ -6,6 +6,7 @@
 
 import { getServerSession } from 'next-auth';
 import { authOptions } from './auth';
+import { prisma } from './db';
 
 export interface AuthContext {
   userId: string;
@@ -20,15 +21,38 @@ export interface AuthContext {
 export async function getAuthContext(): Promise<AuthContext | null> {
   const session = await getServerSession(authOptions);
 
-  if (!session?.user?.id || !session?.user?.organizationId) {
+  if (!session?.user?.id) {
     return null;
   }
 
-  return {
-    userId: session.user.id,
-    organizationId: session.user.organizationId,
-    role: session.user.role || 'member',
-  };
+  // セッションに組織情報がある場合はそのまま使用
+  if (session.user.organizationId) {
+    return {
+      userId: session.user.id,
+      organizationId: session.user.organizationId,
+      role: session.user.role || 'member',
+    };
+  }
+
+  // セッションに組織情報がない場合、DBから取得を試みる
+  try {
+    const membership = await prisma.organizationMember.findFirst({
+      where: { userId: session.user.id },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (membership) {
+      return {
+        userId: session.user.id,
+        organizationId: membership.organizationId,
+        role: membership.role,
+      };
+    }
+  } catch (error) {
+    console.error('[API-AUTH] Failed to fetch membership from DB:', error);
+  }
+
+  return null;
 }
 
 /**
