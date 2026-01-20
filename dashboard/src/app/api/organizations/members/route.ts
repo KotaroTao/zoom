@@ -33,7 +33,12 @@ export async function GET() {
       orderBy: { createdAt: 'asc' },
     });
 
-    const formattedMembers = members.map((m) => ({
+    const formattedMembers = members.map((m: {
+      id: string;
+      role: string;
+      createdAt: Date;
+      user: { id: string; email: string; name: string | null; image: string | null };
+    }) => ({
       id: m.id,
       userId: m.user.id,
       email: m.user.email,

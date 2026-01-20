@@ -33,7 +33,17 @@ export async function GET() {
       },
     });
 
-    const organizations = memberships.map((m) => ({
+    const organizations = memberships.map((m: {
+      role: string;
+      organization: {
+        id: string;
+        name: string;
+        slug: string;
+        plan: string;
+        createdAt: Date;
+        _count: { members: number; recordings: number };
+      };
+    }) => ({
       id: m.organization.id,
       name: m.organization.name,
       slug: m.organization.slug,
@@ -89,7 +99,7 @@ export async function POST(request: Request) {
     }
 
     // トランザクションで組織とメンバーシップを作成
-    const result = await prisma.$transaction(async (tx) => {
+    const result = await prisma.$transaction(async (tx: typeof prisma) => {
       // 組織を作成
       const organization = await tx.organization.create({
         data: {
