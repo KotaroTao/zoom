@@ -63,8 +63,8 @@ export default withAuth(
 );
 
 export const config = {
-  // ログインページ、登録ページ、エラーページ、招待ページ、APIルート以外のすべてのルートを保護
+  // ログインページ、登録ページ、エラーページ、招待ページ、全APIルート以外のすべてのルートを保護
   matcher: [
-    '/((?!login|register|error|invite|api/auth|api/invitations|_next/static|_next/image|favicon.ico).*)',
+    '/((?!login|register|error|invite|api|_next/static|_next/image|favicon.ico).*)',
   ],
 };
