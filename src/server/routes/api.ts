@@ -399,11 +399,11 @@ apiRouter.put('/settings/credentials', async (req: Request, res: Response) => {
 
 /**
  * DBから認証情報を取得するヘルパー関数
+ * マルチテナント対応: 最初の組織の設定を取得
  */
 async function getCredentialsFromDB() {
-  const settings = await prisma.settings.findUnique({
-    where: { id: 'default' },
-  });
+  // 組織ベースの設定を取得（最初の組織）
+  const settings = await prisma.settings.findFirst();
   return settings;
 }
 
