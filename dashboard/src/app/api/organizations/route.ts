@@ -99,7 +99,7 @@ export async function POST(request: Request) {
     }
 
     // トランザクションで組織とメンバーシップを作成
-    const result = await prisma.$transaction(async (tx) => {
+    const result = await prisma.$transaction(async (tx: typeof prisma) => {
       // 組織を作成
       const organization = await tx.organization.create({
         data: {
