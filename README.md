@@ -466,6 +466,216 @@ if (credentials.notionApiKey && credentials.notionDatabaseId) {
 
 *ダッシュボードで設定する場合は環境変数は不要
 
+## 開発ガイド（2026年1月版）
+
+### 本番環境情報
+
+| 項目 | 値 |
+|------|-----|
+| サーバー | tao-dx.com |
+| デプロイパス | `/var/www/zoom` |
+| ダッシュボードURL | `https://tao-dx.com/zoom` |
+| バックエンドポート | 3002 |
+| ダッシュボードポート | 3001 |
+| WebhookURL | `https://tao-dx.com/zoom/webhook/zoom` |
+
+### Nginx設定
+
+`/etc/nginx/sites-available/tao-dx` のzoom関連部分:
+
+```nginx
+# Zoom backend API (テスト用、認証情報設定など)
+location /zoom/api/test/ {
+    proxy_pass http://127.0.0.1:3002/api/test/;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection 'upgrade';
+    proxy_set_header Host $host;
+    proxy_cache_bypass $http_upgrade;
+}
+
+# Zoom Webhook (録画完了イベント受信)
+location /zoom/webhook/ {
+    proxy_pass http://127.0.0.1:3002/webhook/;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+
+# Zoom Dashboard (Next.js) - 最後に配置
+location /zoom {
+    proxy_pass http://127.0.0.1:3001;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection 'upgrade';
+    proxy_set_header Host $host;
+    proxy_cache_bypass $http_upgrade;
+}
+```
+
+**重要**: `/zoom/api/*` はダッシュボード（Next.js API Routes）に、`/zoom/api/test/` と `/zoom/webhook/` はバックエンド（Express）にルーティングされます。
+
+### マルチテナントスキーマ重要ポイント
+
+#### Settingsモデル
+
+```prisma
+model Settings {
+  id                     String   @id @default(cuid())
+  organizationId         String   @unique  // ← ユニークキー
+  organization           Organization @relation(fields: [organizationId], references: [id])
+  // ... 認証情報フィールド
+}
+```
+
+**⚠️ 重要**: `id: 'default'` でのクエリは動作しません。必ず `findFirst()` または `organizationId` で検索してください。
+
+#### 修正済みファイル
+
+以下のファイルはマルチテナント対応済み:
+
+| ファイル | 修正内容 |
+|---------|---------|
+| `src/utils/credentials.ts` | `findFirst()` を使用 |
+| `src/services/credentials/index.ts` | `findFirst()` を使用 |
+| `src/server/routes/api.ts` | `findFirst()` を使用 |
+| `src/queue/worker.ts` | `organizationId` 付きcompound keyを使用 |
+| `dashboard/src/lib/api-auth.ts` | DBフォールバックでorganizationId取得 |
+
+#### Recording モデル（compound key）
+
+```prisma
+model Recording {
+  organizationId    String
+  zoomMeetingId     String
+  @@unique([organizationId, zoomMeetingId])  // ← compound unique
+}
+```
+
+Workerでのupsert例:
+```typescript
+const dbRecording = await prisma.recording.upsert({
+  where: {
+    organizationId_zoomMeetingId: {
+      organizationId,
+      zoomMeetingId,
+    },
+  },
+  create: { organizationId, zoomMeetingId, ... },
+  update: { ... },
+});
+```
+
+### バックアップと復元
+
+#### 安定版タグ
+
+```bash
+# 現在の安定版
+v1.0.0-stable-20260120
+
+# タグから復元
+git checkout v1.0.0-stable-20260120
+
+# 開発ブランチに戻る
+git checkout claude/zoom-recording-system-E63fd
+```
+
+#### ローカルバックアップブランチ
+
+```bash
+backup/stable-20260120-all-features-working
+```
+
+#### 新しいバックアップ作成
+
+```bash
+git tag -a v1.0.1-stable-YYYYMMDD -m "説明"
+git branch backup/stable-YYYYMMDD-description
+```
+
+### よくある問題と解決策
+
+#### 1. 設定が読み込まれない（プレースホルダー値が使われる）
+
+**症状**: ログに `"spreadsheetId":"your_spreadsheet_id"` など
+
+**原因**: `findUnique({ where: { id: 'default' } })` を使用している
+
+**解決**: `findFirst()` に変更
+
+```typescript
+// NG
+const settings = await prisma.settings.findUnique({
+  where: { id: 'default' },
+});
+
+// OK
+const settings = await prisma.settings.findFirst();
+```
+
+#### 2. オンボーディングで「Not Found」
+
+**原因**: Nginxが `/zoom/api/organizations` をバックエンドにルーティングしている
+
+**解決**: Nginx設定で `/zoom/api/test/` のみバックエンドに、他はダッシュボードにルーティング
+
+#### 3. 「設定の取得に失敗しました」
+
+**原因**: ユーザーに組織が紐づいていない
+
+**解決**: `/zoom/onboarding` で組織を作成
+
+#### 4. Webhook署名検証エラー
+
+**原因**: バックエンドがDBから認証情報を読めていない
+
+**解決**: `src/services/credentials/index.ts` が `findFirst()` を使用しているか確認
+
+### デプロイ手順
+
+```bash
+# 1. 本番サーバーにSSH
+ssh user@tao-dx.com
+
+# 2. プロジェクトディレクトリに移動
+cd /var/www/zoom
+
+# 3. 変更を取得
+git pull origin claude/zoom-recording-system-E63fd
+
+# 4. バックエンドビルド
+npm run build
+
+# 5. ダッシュボードビルド
+cd dashboard && npm run build && cd ..
+
+# 6. PM2再起動
+pm2 restart zoom-backend zoom-dashboard
+
+# 7. ログ確認
+pm2 logs --lines 50
+```
+
+### 動作確認済み機能（2026年1月20日）
+
+- ✅ Zoom録画Webhook受信
+- ✅ 録画ダウンロード
+- ✅ YouTubeアップロード
+- ✅ Whisper文字起こし
+- ✅ GPT要約生成
+- ✅ Google Sheets同期
+- ✅ Notion同期
+- ✅ マルチテナント対応
+- ✅ ダッシュボード認証情報設定
+- ✅ 組織作成・オンボーディング
+
+### 開発ブランチ
+
+メイン開発ブランチ: `claude/zoom-recording-system-E63fd`
+
 ## ライセンス
 
 MIT
