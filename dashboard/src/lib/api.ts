@@ -5,8 +5,8 @@
  * ダッシュボードのNext.js API Routesを使用
  */
 
-// ダッシュボードAPIのベースパス
-const API_BASE = '/api';
+// ダッシュボードAPIのベースパス（basePath対応）
+const API_BASE = '/zoom/api';
 
 /**
  * APIリクエスト用ヘルパー
