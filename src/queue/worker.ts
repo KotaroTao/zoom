@@ -106,10 +106,23 @@ async function processRecording(job: Job<ProcessingJob>): Promise<void> {
   let dbRecordingId: string | null = null;
 
   try {
+    // 最初の組織を取得（マルチテナント対応）
+    const firstOrg = await prisma.organization.findFirst();
+    if (!firstOrg) {
+      throw new Error('組織が見つかりません。先にダッシュボードで組織を作成してください。');
+    }
+    const organizationId = firstOrg.id;
+
     // DBに録画レコードを作成/更新
     const dbRecording = await prisma.recording.upsert({
-      where: { zoomMeetingId },
+      where: {
+        organizationId_zoomMeetingId: {
+          organizationId,
+          zoomMeetingId,
+        },
+      },
       create: {
+        organizationId,
         zoomMeetingId,
         zoomMeetingUuid: job.data.zoomMeetingUuid,
         title,
