@@ -26,12 +26,12 @@ export interface DBCredentials {
 
 /**
  * DBから認証情報を取得（環境変数をフォールバック）
+ * マルチテナント対応: 最初の組織の設定を取得
  */
 export async function getCredentials(): Promise<DBCredentials> {
   try {
-    const settings = await prisma.settings.findUnique({
-      where: { id: 'default' },
-    });
+    // マルチテナント対応: organizationIdベースの設定を取得
+    const settings = await prisma.settings.findFirst();
 
     return {
       // Zoom (DB優先、なければ環境変数)
