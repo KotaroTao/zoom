@@ -38,6 +38,7 @@ const CACHE_TTL = 60000; // 1分
 
 /**
  * 認証情報をDBから取得（キャッシュ付き）
+ * マルチテナント対応: 最初の組織の設定を取得
  */
 export async function getCredentials(): Promise<AllCredentials> {
   // キャッシュが有効な場合
@@ -46,9 +47,8 @@ export async function getCredentials(): Promise<AllCredentials> {
   }
 
   try {
-    const settings = await prisma.settings.findUnique({
-      where: { id: 'default' },
-    });
+    // 組織ベースの設定を取得（最初の組織）
+    const settings = await prisma.settings.findFirst();
 
     cachedCredentials = {
       zoom: {
