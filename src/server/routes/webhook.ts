@@ -129,11 +129,8 @@ async function handleRecordingCompleted(payload: ZoomWebhookPayload): Promise<vo
 
   webhookLogger.received('recording.completed', meetingId);
 
-  // クライアント名を決定：1. Zoom URLから検索、2. タイトルから抽出
-  let clientName = await findClientByZoomUrl(zoomUrl);
-  if (!clientName) {
-    clientName = extractClientName(title);
-  }
+  // クライアント名を決定：Zoom URLが登録済みクライアントと一致する場合のみ割当
+  const clientName = await findClientByZoomUrl(zoomUrl);
 
   // MP4ファイルを探す（メインの録画ファイル）
   const mp4File = object.recording_files.find(
@@ -163,7 +160,7 @@ async function handleRecordingCompleted(payload: ZoomWebhookPayload): Promise<vo
   logger.info('処理ジョブをキューに追加しました', {
     meetingId,
     title,
-    clientName,
+    clientName: clientName || '未設定',
     zoomUrl,
     duration: object.duration,
   });
