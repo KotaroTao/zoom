@@ -876,7 +876,7 @@ apiRouter.post('/recordings/:id/reprocess', async (req: Request, res: Response) 
     const { zoomClient } = await import('../../services/zoom/client.js');
     const { downloadRecordingFile } = await import('../../services/zoom/download.js');
     const { transcribeWithWhisper } = await import('../../services/transcription/whisper.js');
-    const { generateSummary } = await import('../../services/summary/openai.js');
+    const { generateSummary, summarizeLongText } = await import('../../services/summary/openai.js');
     const { deleteFile } = await import('../../utils/fileManager.js');
 
     // ステータスを更新
@@ -962,11 +962,15 @@ apiRouter.post('/recordings/:id/reprocess', async (req: Request, res: Response) 
         data: { status: 'SUMMARIZING', transcript, transcribedAt: new Date() },
       });
 
-      const summaryResult = await generateSummary(transcript, {
+      // 長い文字起こしの場合は分割要約を使用（40,000文字以上）
+      const summaryOptions = {
         clientName: recording.clientName || undefined,
         meetingTitle: recording.title,
-        style: 'detailed',
-      });
+        style: 'detailed' as const,
+      };
+      const summaryResult = transcript.length > 40000
+        ? await summarizeLongText(transcript, summaryOptions)
+        : await generateSummary(transcript, summaryOptions);
 
       let summary: string | null = null;
       if (summaryResult.success && summaryResult.summary) {
