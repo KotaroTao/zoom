@@ -122,6 +122,9 @@ export default function RecordingsPage() {
   const [editForm, setEditForm] = useState({ title: '', clientName: '' });
   const [saving, setSaving] = useState(false);
   const [clients, setClients] = useState<Client[]>([]);
+  const [showNewClientForm, setShowNewClientForm] = useState(false);
+  const [newClientName, setNewClientName] = useState('');
+  const [creatingClient, setCreatingClient] = useState(false);
   const limit = 20;
 
   // 報告書生成状態
@@ -162,6 +165,8 @@ export default function RecordingsPage() {
       title: recording.title,
       clientName: recording.clientName || '',
     });
+    setShowNewClientForm(false);
+    setNewClientName('');
     // クライアント一覧を取得
     try {
       const data = await api.getClients();
@@ -169,6 +174,28 @@ export default function RecordingsPage() {
       setClients(data.clients.filter((c: Client) => c.id));
     } catch (err) {
       console.error('Failed to fetch clients:', err);
+    }
+  };
+
+  // クライアント新規作成
+  const handleCreateClient = async () => {
+    if (!newClientName.trim()) return;
+
+    setCreatingClient(true);
+    try {
+      await api.createClient({ name: newClientName.trim() });
+      // クライアント一覧を再取得
+      const data = await api.getClients();
+      setClients(data.clients.filter((c: Client) => c.id));
+      // 作成したクライアントを選択
+      setEditForm({ ...editForm, clientName: newClientName.trim() });
+      setShowNewClientForm(false);
+      setNewClientName('');
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : 'クライアントの作成に失敗しました';
+      setError(errorMessage);
+    } finally {
+      setCreatingClient(false);
     }
   };
 
@@ -597,21 +624,66 @@ export default function RecordingsPage() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  クライアント
-                </label>
-                <select
-                  value={editForm.clientName}
-                  onChange={(e) => setEditForm({ ...editForm, clientName: e.target.value })}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                >
-                  <option value="">未設定</option>
-                  {clients.map((client) => (
-                    <option key={client.id} value={client.name}>
-                      {client.name}
-                    </option>
-                  ))}
-                </select>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-sm font-medium text-gray-700">
+                    クライアント
+                  </label>
+                  {!showNewClientForm && (
+                    <button
+                      type="button"
+                      onClick={() => setShowNewClientForm(true)}
+                      className="text-xs text-primary-600 hover:text-primary-700"
+                    >
+                      + 新規作成
+                    </button>
+                  )}
+                </div>
+                {showNewClientForm ? (
+                  <div className="space-y-2">
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={newClientName}
+                        onChange={(e) => setNewClientName(e.target.value)}
+                        placeholder="新しいクライアント名"
+                        className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                        autoFocus
+                      />
+                      <button
+                        type="button"
+                        onClick={handleCreateClient}
+                        disabled={creatingClient || !newClientName.trim()}
+                        className="px-3 py-2 text-sm bg-primary-600 hover:bg-primary-700 text-white rounded-lg disabled:opacity-50 flex items-center gap-1"
+                      >
+                        {creatingClient && <Loader2 className="h-3 w-3 animate-spin" />}
+                        作成
+                      </button>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowNewClientForm(false);
+                        setNewClientName('');
+                      }}
+                      className="text-xs text-gray-500 hover:text-gray-700"
+                    >
+                      ← 既存のクライアントから選択
+                    </button>
+                  </div>
+                ) : (
+                  <select
+                    value={editForm.clientName}
+                    onChange={(e) => setEditForm({ ...editForm, clientName: e.target.value })}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                  >
+                    <option value="">未設定</option>
+                    {clients.map((client) => (
+                      <option key={client.id} value={client.name}>
+                        {client.name}
+                      </option>
+                    ))}
+                  </select>
+                )}
               </div>
             </div>
             <div className="flex justify-end gap-2 p-4 border-t">
@@ -623,7 +695,7 @@ export default function RecordingsPage() {
               </button>
               <button
                 onClick={handleEditSave}
-                disabled={saving || !editForm.title.trim()}
+                disabled={saving || !editForm.title.trim() || showNewClientForm}
                 className="px-4 py-2 text-sm bg-primary-600 hover:bg-primary-700 text-white rounded-lg disabled:opacity-50 flex items-center gap-2"
               >
                 {saving && <Loader2 className="h-4 w-4 animate-spin" />}
