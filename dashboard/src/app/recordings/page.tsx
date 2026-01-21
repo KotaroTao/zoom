@@ -31,6 +31,7 @@ import {
 } from 'lucide-react';
 import { StatusBadge } from '@/components/StatusBadge';
 import { DashboardLayout } from '@/components/DashboardLayout';
+import { SearchableSelect } from '@/components/SearchableSelect';
 import { api, Recording, Client, ReportTemplate } from '@/lib/api';
 
 // 連絡ツールアイコンを取得
@@ -726,18 +727,16 @@ export default function RecordingsPage() {
                     </button>
                   </div>
                 ) : (
-                  <select
+                  <SearchableSelect
+                    options={clients.map((client) => ({
+                      value: client.name,
+                      label: client.name,
+                    }))}
                     value={editForm.clientName}
-                    onChange={(e) => setEditForm({ ...editForm, clientName: e.target.value })}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                  >
-                    <option value="">未設定</option>
-                    {clients.map((client) => (
-                      <option key={client.id || client.name} value={client.name}>
-                        {client.name}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(value) => setEditForm({ ...editForm, clientName: value })}
+                    placeholder="クライアント名で検索..."
+                    emptyLabel="未設定"
+                  />
                 )}
               </div>
             </div>
