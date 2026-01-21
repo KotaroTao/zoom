@@ -678,25 +678,7 @@ export default function RecordingsPage() {
                               >
                                 <FileText className="h-4 w-4" />
                               </button>
-                              <button
-                                onClick={() => handleOpenReportModal(recording)}
-                                className="p-2 text-gray-400 hover:text-green-600 hover:bg-gray-100 rounded-lg"
-                                title="報告書を生成"
-                              >
-                                <FileOutput className="h-4 w-4" />
-                              </button>
                             </>
-                          )}
-                          {recording.zoomUrl && (
-                            <a
-                              href={recording.zoomUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="p-2 text-gray-400 hover:text-blue-500 hover:bg-gray-100 rounded-lg"
-                              title="Zoomで見る"
-                            >
-                              <Download className="h-4 w-4" />
-                            </a>
                           )}
                           {(recording.status === 'FAILED' || !recording.transcript || !recording.summary) && (
                             <button
