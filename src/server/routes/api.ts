@@ -9,6 +9,11 @@ import { zoomClient } from '../../services/zoom/client.js';
 import { youtubeClient } from '../../services/youtube/client.js';
 import { config } from '../../config/env.js';
 import OpenAI from 'openai';
+import {
+  generateClientReport,
+  generateAndSaveClientReport,
+  previewTemplate,
+} from '../../services/report/index.js';
 
 export const apiRouter = Router();
 
@@ -631,4 +636,257 @@ apiRouter.get('/connection-status', async (_req: Request, res: Response) => {
   };
 
   res.json(results);
+});
+
+// =============================================
+// レポートテンプレート API
+// =============================================
+
+/**
+ * テンプレート一覧を取得
+ */
+apiRouter.get('/templates', async (req: Request, res: Response) => {
+  try {
+    const includeInactive = req.query.includeInactive === 'true';
+
+    // 最初の組織のテンプレートを取得
+    const org = await prisma.organization.findFirst();
+    if (!org) {
+      return res.status(404).json({ error: '組織が見つかりません' });
+    }
+
+    const where: Record<string, unknown> = { organizationId: org.id };
+    if (!includeInactive) {
+      where.isActive = true;
+    }
+
+    const templates = await prisma.reportTemplate.findMany({
+      where,
+      orderBy: [
+        { isDefault: 'desc' },
+        { createdAt: 'desc' },
+      ],
+    });
+
+    res.json({ templates });
+  } catch (error) {
+    console.error('Templates GET error:', error);
+    res.status(500).json({ error: 'テンプレート一覧の取得に失敗しました' });
+  }
+});
+
+/**
+ * テンプレート詳細を取得
+ */
+apiRouter.get('/templates/:id', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    const template = await prisma.reportTemplate.findUnique({
+      where: { id },
+    });
+
+    if (!template) {
+      return res.status(404).json({ error: 'テンプレートが見つかりません' });
+    }
+
+    res.json(template);
+  } catch (error) {
+    console.error('Template GET error:', error);
+    res.status(500).json({ error: 'テンプレートの取得に失敗しました' });
+  }
+});
+
+/**
+ * テンプレートを作成
+ */
+apiRouter.post('/templates', async (req: Request, res: Response) => {
+  try {
+    const { name, description, content, isDefault } = req.body;
+
+    if (!name || !content) {
+      return res.status(400).json({ error: 'テンプレート名と本文は必須です' });
+    }
+
+    // 最初の組織を取得
+    const org = await prisma.organization.findFirst();
+    if (!org) {
+      return res.status(404).json({ error: '組織が見つかりません' });
+    }
+
+    // デフォルトに設定する場合、既存のデフォルトを解除
+    if (isDefault) {
+      await prisma.reportTemplate.updateMany({
+        where: { organizationId: org.id, isDefault: true },
+        data: { isDefault: false },
+      });
+    }
+
+    const template = await prisma.reportTemplate.create({
+      data: {
+        organizationId: org.id,
+        name,
+        description: description || null,
+        content,
+        isDefault: isDefault || false,
+        isActive: true,
+      },
+    });
+
+    res.status(201).json(template);
+  } catch (error) {
+    console.error('Template POST error:', error);
+    res.status(500).json({ error: 'テンプレートの作成に失敗しました' });
+  }
+});
+
+/**
+ * テンプレートを更新
+ */
+apiRouter.put('/templates/:id', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { name, description, content, isDefault, isActive } = req.body;
+
+    const existing = await prisma.reportTemplate.findUnique({ where: { id } });
+    if (!existing) {
+      return res.status(404).json({ error: 'テンプレートが見つかりません' });
+    }
+
+    // デフォルトに設定する場合、既存のデフォルトを解除
+    if (isDefault && !existing.isDefault) {
+      await prisma.reportTemplate.updateMany({
+        where: { organizationId: existing.organizationId, isDefault: true },
+        data: { isDefault: false },
+      });
+    }
+
+    const template = await prisma.reportTemplate.update({
+      where: { id },
+      data: {
+        name: name !== undefined ? name : existing.name,
+        description: description !== undefined ? description : existing.description,
+        content: content !== undefined ? content : existing.content,
+        isDefault: isDefault !== undefined ? isDefault : existing.isDefault,
+        isActive: isActive !== undefined ? isActive : existing.isActive,
+      },
+    });
+
+    res.json(template);
+  } catch (error) {
+    console.error('Template PUT error:', error);
+    res.status(500).json({ error: 'テンプレートの更新に失敗しました' });
+  }
+});
+
+/**
+ * テンプレートを削除
+ */
+apiRouter.delete('/templates/:id', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    const existing = await prisma.reportTemplate.findUnique({ where: { id } });
+    if (!existing) {
+      return res.status(404).json({ error: 'テンプレートが見つかりません' });
+    }
+
+    // デフォルトテンプレートは削除不可
+    if (existing.isDefault) {
+      return res.status(400).json({ error: 'デフォルトテンプレートは削除できません。先に別のテンプレートをデフォルトに設定してください。' });
+    }
+
+    await prisma.reportTemplate.delete({ where: { id } });
+
+    res.json({ success: true, message: 'テンプレートを削除しました' });
+  } catch (error) {
+    console.error('Template DELETE error:', error);
+    res.status(500).json({ error: 'テンプレートの削除に失敗しました' });
+  }
+});
+
+/**
+ * テンプレートのプレビュー
+ */
+apiRouter.post('/templates/preview', async (req: Request, res: Response) => {
+  try {
+    const { content } = req.body;
+
+    if (!content) {
+      return res.status(400).json({ error: 'テンプレート本文が必要です' });
+    }
+
+    const preview = previewTemplate(content);
+    res.json({ preview });
+  } catch (error) {
+    console.error('Template preview error:', error);
+    res.status(500).json({ error: 'プレビューの生成に失敗しました' });
+  }
+});
+
+// =============================================
+// クライアント報告書 API
+// =============================================
+
+/**
+ * 録画の報告書を生成
+ */
+apiRouter.post('/recordings/:id/generate-report', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { templateId, save } = req.body;
+
+    // save=trueの場合はDBに保存
+    const result = save
+      ? await generateAndSaveClientReport(id, { templateId })
+      : await generateClientReport(id, { templateId });
+
+    if (!result.success) {
+      return res.status(400).json({ error: result.error });
+    }
+
+    res.json({
+      success: true,
+      report: result.report,
+      templateId: result.templateId,
+    });
+  } catch (error) {
+    console.error('Report generation error:', error);
+    res.status(500).json({ error: '報告書の生成に失敗しました' });
+  }
+});
+
+/**
+ * 録画の報告書を取得
+ */
+apiRouter.get('/recordings/:id/report', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    const recording = await prisma.recording.findUnique({
+      where: { id },
+      select: {
+        clientReport: true,
+        clientReportTemplateId: true,
+        clientReportGeneratedAt: true,
+      },
+    });
+
+    if (!recording) {
+      return res.status(404).json({ error: '録画が見つかりません' });
+    }
+
+    if (!recording.clientReport) {
+      return res.status(404).json({ error: '報告書がまだ生成されていません' });
+    }
+
+    res.json({
+      report: recording.clientReport,
+      templateId: recording.clientReportTemplateId,
+      generatedAt: recording.clientReportGeneratedAt,
+    });
+  } catch (error) {
+    console.error('Report GET error:', error);
+    res.status(500).json({ error: '報告書の取得に失敗しました' });
+  }
 });

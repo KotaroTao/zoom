@@ -9,12 +9,14 @@ import {
   Settings,
   BarChart3,
   RefreshCw,
+  FileText,
 } from 'lucide-react';
 
 const navigation = [
   { name: 'ダッシュボード', href: '/', icon: Home },
   { name: '録画一覧', href: '/recordings', icon: Video },
   { name: 'クライアント', href: '/clients', icon: Users },
+  { name: 'テンプレート', href: '/templates', icon: FileText },
   { name: '統計', href: '/stats', icon: BarChart3 },
   { name: 'セットアップ', href: '/setup', icon: Settings },
 ];

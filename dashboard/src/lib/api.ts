@@ -216,6 +216,49 @@ export interface OrganizationsResponse {
   organizations: Organization[];
 }
 
+export interface ReportTemplate {
+  id: string;
+  organizationId: string;
+  name: string;
+  description: string | null;
+  content: string;
+  isDefault: boolean;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TemplatesResponse {
+  templates: ReportTemplate[];
+}
+
+export interface TemplateInput {
+  name: string;
+  description?: string;
+  content: string;
+  isDefault?: boolean;
+}
+
+export interface TemplateUpdateInput {
+  name?: string;
+  description?: string;
+  content?: string;
+  isDefault?: boolean;
+  isActive?: boolean;
+}
+
+export interface ReportResponse {
+  report: string;
+  templateId: string;
+  generatedAt?: string;
+}
+
+export interface ReportGenerateResponse {
+  success: boolean;
+  report: string;
+  templateId: string;
+}
+
 // API Functions
 export const api = {
   /**
@@ -359,5 +402,74 @@ export const api = {
     fetchApi<{ success: boolean; organization: Organization }>('/organizations', {
       method: 'POST',
       body: JSON.stringify({ name }),
+    }),
+
+  // =============================================
+  // テンプレート API
+  // =============================================
+
+  /**
+   * テンプレート一覧を取得
+   */
+  getTemplates: (includeInactive = false) =>
+    fetchApi<TemplatesResponse>(`/templates${includeInactive ? '?includeInactive=true' : ''}`),
+
+  /**
+   * テンプレート詳細を取得
+   */
+  getTemplate: (id: string) => fetchApi<ReportTemplate>(`/templates/${id}`),
+
+  /**
+   * テンプレートを作成
+   */
+  createTemplate: (data: TemplateInput) =>
+    fetchApi<ReportTemplate>('/templates', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  /**
+   * テンプレートを更新
+   */
+  updateTemplate: (id: string, data: TemplateUpdateInput) =>
+    fetchApi<ReportTemplate>(`/templates/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+
+  /**
+   * テンプレートを削除
+   */
+  deleteTemplate: (id: string) =>
+    fetchApi<{ success: boolean; message: string }>(`/templates/${id}`, {
+      method: 'DELETE',
+    }),
+
+  /**
+   * テンプレートをプレビュー
+   */
+  previewTemplate: (content: string) =>
+    fetchApi<{ preview: string }>('/templates/preview', {
+      method: 'POST',
+      body: JSON.stringify({ content }),
+    }),
+
+  // =============================================
+  // クライアント報告書 API
+  // =============================================
+
+  /**
+   * 報告書を取得
+   */
+  getReport: (recordingId: string) =>
+    fetchApi<ReportResponse>(`/recordings/${recordingId}/report`),
+
+  /**
+   * 報告書を生成
+   */
+  generateReport: (recordingId: string, templateId?: string, save = false) =>
+    fetchApi<ReportGenerateResponse>(`/recordings/${recordingId}/report`, {
+      method: 'POST',
+      body: JSON.stringify({ templateId, save }),
     }),
 };

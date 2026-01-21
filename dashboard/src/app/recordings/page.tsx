@@ -20,10 +20,13 @@ import {
   MinusCircle,
   X,
   Edit2,
+  FileOutput,
+  Copy,
+  Check,
 } from 'lucide-react';
 import { StatusBadge } from '@/components/StatusBadge';
 import { DashboardLayout } from '@/components/DashboardLayout';
-import { api, Recording, Client } from '@/lib/api';
+import { api, Recording, Client, ReportTemplate } from '@/lib/api';
 
 // 同期ステータスアイコンコンポーネント
 function SyncStatusIcon({
@@ -80,6 +83,14 @@ export default function RecordingsPage() {
   const [saving, setSaving] = useState(false);
   const [clients, setClients] = useState<Client[]>([]);
   const limit = 20;
+
+  // 報告書生成状態
+  const [reportRecording, setReportRecording] = useState<Recording | null>(null);
+  const [templates, setTemplates] = useState<ReportTemplate[]>([]);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
+  const [generatedReport, setGeneratedReport] = useState<string>('');
+  const [generating, setGenerating] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   const fetchRecordings = async () => {
     setLoading(true);
@@ -139,6 +150,62 @@ export default function RecordingsPage() {
       setError(errorMessage);
     } finally {
       setSaving(false);
+    }
+  };
+
+  // 報告書生成モーダルを開く
+  const handleOpenReportModal = async (recording: Recording) => {
+    setReportRecording(recording);
+    setGeneratedReport('');
+    setSelectedTemplateId('');
+    setCopied(false);
+
+    try {
+      const data = await api.getTemplates();
+      setTemplates(data.templates);
+      // デフォルトテンプレートを選択
+      const defaultTemplate = data.templates.find(t => t.isDefault);
+      if (defaultTemplate) {
+        setSelectedTemplateId(defaultTemplate.id);
+      } else if (data.templates.length > 0) {
+        setSelectedTemplateId(data.templates[0].id);
+      }
+    } catch (err) {
+      console.error('Failed to fetch templates:', err);
+      setError('テンプレートの取得に失敗しました');
+    }
+  };
+
+  // 報告書を生成
+  const handleGenerateReport = async () => {
+    if (!reportRecording) return;
+
+    setGenerating(true);
+    setError(null);
+
+    try {
+      const data = await api.generateReport(
+        reportRecording.id,
+        selectedTemplateId || undefined,
+        false
+      );
+      setGeneratedReport(data.report);
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : '報告書の生成に失敗しました';
+      setError(errorMessage);
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  // 報告書をコピー
+  const handleCopyReport = async () => {
+    try {
+      await navigator.clipboard.writeText(generatedReport);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error('Copy failed:', err);
     }
   };
 
@@ -324,13 +391,22 @@ export default function RecordingsPage() {
                             </a>
                           )}
                           {recording.summary && (
-                            <button
-                              onClick={() => setSelectedRecording(recording)}
-                              className="p-2 text-gray-400 hover:text-primary-600 hover:bg-gray-100 rounded-lg"
-                              title="要約を表示"
-                            >
-                              <FileText className="h-4 w-4" />
-                            </button>
+                            <>
+                              <button
+                                onClick={() => setSelectedRecording(recording)}
+                                className="p-2 text-gray-400 hover:text-primary-600 hover:bg-gray-100 rounded-lg"
+                                title="要約を表示"
+                              >
+                                <FileText className="h-4 w-4" />
+                              </button>
+                              <button
+                                onClick={() => handleOpenReportModal(recording)}
+                                className="p-2 text-gray-400 hover:text-green-600 hover:bg-gray-100 rounded-lg"
+                                title="報告書を生成"
+                              >
+                                <FileOutput className="h-4 w-4" />
+                              </button>
+                            </>
                           )}
                           {recording.zoomUrl && (
                             <a
@@ -493,6 +569,121 @@ export default function RecordingsPage() {
               >
                 {saving && <Loader2 className="h-4 w-4 animate-spin" />}
                 保存
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 報告書生成モーダル */}
+      {reportRecording && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-3xl max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between p-4 border-b">
+              <h3 className="text-lg font-semibold text-gray-900">
+                クライアント報告書を生成
+              </h3>
+              <button
+                onClick={() => setReportRecording(null)}
+                className="p-1 text-gray-400 hover:text-gray-600 rounded"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="p-4 overflow-y-auto flex-1">
+              <div className="text-sm text-gray-500 mb-4">
+                {reportRecording.title}
+                {reportRecording.clientName && ` • ${reportRecording.clientName}`}
+              </div>
+
+              {/* テンプレート選択 */}
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  テンプレート
+                </label>
+                <select
+                  value={selectedTemplateId}
+                  onChange={(e) => setSelectedTemplateId(e.target.value)}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                >
+                  {templates.length === 0 ? (
+                    <option value="">テンプレートがありません</option>
+                  ) : (
+                    templates.map((template) => (
+                      <option key={template.id} value={template.id}>
+                        {template.name}
+                        {template.isDefault && ' (デフォルト)'}
+                      </option>
+                    ))
+                  )}
+                </select>
+              </div>
+
+              {/* 生成ボタン */}
+              {!generatedReport && (
+                <button
+                  onClick={handleGenerateReport}
+                  disabled={generating || templates.length === 0}
+                  className="w-full px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {generating ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      生成中...
+                    </>
+                  ) : (
+                    <>
+                      <FileOutput className="h-4 w-4" />
+                      報告書を生成
+                    </>
+                  )}
+                </button>
+              )}
+
+              {/* 生成結果 */}
+              {generatedReport && (
+                <div className="mt-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-medium text-gray-700">生成結果</span>
+                    <button
+                      onClick={handleCopyReport}
+                      className="flex items-center gap-1 px-3 py-1 text-sm text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg"
+                    >
+                      {copied ? (
+                        <>
+                          <Check className="h-4 w-4 text-green-500" />
+                          コピーしました
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="h-4 w-4" />
+                          コピー
+                        </>
+                      )}
+                    </button>
+                  </div>
+                  <pre className="whitespace-pre-wrap font-sans text-sm text-gray-700 bg-gray-50 p-4 rounded-lg max-h-96 overflow-y-auto">
+                    {generatedReport}
+                  </pre>
+                </div>
+              )}
+            </div>
+            <div className="flex justify-end gap-2 p-4 border-t">
+              {generatedReport && (
+                <button
+                  onClick={() => {
+                    setGeneratedReport('');
+                  }}
+                  className="px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-lg"
+                >
+                  再生成
+                </button>
+              )}
+              <button
+                onClick={() => setReportRecording(null)}
+                className="px-4 py-2 text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg"
+              >
+                閉じる
               </button>
             </div>
           </div>

@@ -29,11 +29,12 @@ model Organization {
   updatedAt   DateTime @updatedAt
 
   // リレーション
-  members     OrganizationMember[]
-  recordings  Recording[]
-  clients     Client[]
-  settings    Settings?
-  invitations Invitation[]
+  members         OrganizationMember[]
+  recordings      Recording[]
+  clients         Client[]
+  reportTemplates ReportTemplate[]
+  settings        Settings?
+  invitations     Invitation[]
 }
 
 // -------------------------------------------
@@ -136,6 +137,11 @@ model Recording {
   transcript      String?  // 文字起こし全文
   summary         String?  // 要約テキスト
 
+  // クライアント向け報告書
+  clientReport           String?    // 生成された報告書
+  clientReportTemplateId String?    // 使用したテンプレートID
+  clientReportGeneratedAt DateTime? // 生成日時
+
   // 外部連携
   sheetRowNumber  Int?     // Google Sheets の行番号
   notionPageId    String?  // Notion ページID
@@ -168,6 +174,28 @@ model Recording {
   @@index([clientName])
   @@index([status])
   @@index([meetingDate])
+}
+
+// -------------------------------------------
+// レポートテンプレート
+// -------------------------------------------
+model ReportTemplate {
+  id             String   @id @default(cuid())
+
+  // 組織
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  name           String   // テンプレート名
+  description    String?  // 説明
+  content        String   // テンプレート本文（変数を含む）
+  isDefault      Boolean  @default(false)  // デフォルトテンプレート
+  isActive       Boolean  @default(true)
+
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([organizationId])
 }
 
 // -------------------------------------------
