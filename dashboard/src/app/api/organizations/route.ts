@@ -4,8 +4,11 @@
 
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
+import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { authOptions, generateSlug } from '@/lib/auth';
+
+type TransactionClient = Omit<typeof prisma, '$connect' | '$disconnect' | '$on' | '$transaction' | '$use' | '$extends'>;
 
 /**
  * 組織一覧を取得（自分が所属する組織）
@@ -99,7 +102,7 @@ export async function POST(request: Request) {
     }
 
     // トランザクションで組織とメンバーシップを作成
-    const result = await prisma.$transaction(async (tx) => {
+    const result = await prisma.$transaction(async (tx: TransactionClient) => {
       // 組織を作成
       const organization = await tx.organization.create({
         data: {

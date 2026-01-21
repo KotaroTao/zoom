@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useSession } from 'next-auth/react';
 import {
   Video,
@@ -21,11 +21,8 @@ import {
   Key,
   Eye,
   EyeOff,
-  Save,
   Settings as SettingsIcon,
   FileText,
-  Wifi,
-  WifiOff,
 } from 'lucide-react';
 import { DashboardLayout } from '@/components/DashboardLayout';
 import { api, Settings, ConnectionStatus, Credentials } from '@/lib/api';
@@ -59,12 +56,7 @@ export default function SetupPage() {
   const [testResults, setTestResults] = useState<Record<string, { success: boolean; message: string }>>({});
   const [copiedText, setCopiedText] = useState<string | null>(null);
   const [showSecrets, setShowSecrets] = useState<Record<string, boolean>>({});
-
-  // 設定保存関連
-  const [saving, setSaving] = useState(false);
-  const [savingCredentials, setSavingCredentials] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const [savedCredentials, setSavedCredentials] = useState(false);
+  const [savingSettings, setSavingSettings] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const [settings, setSettings] = useState<Settings>({
@@ -140,95 +132,142 @@ export default function SetupPage() {
     setShowSecrets(prev => ({ ...prev, [key]: !prev[key] }));
   };
 
-  const handleTest = async (serviceId: string, testFn: () => Promise<{ success: boolean; message: string }>) => {
-    setTestingService(serviceId);
+  // 処理設定を自動保存
+  const saveSettings = useCallback(async (newSettings: Partial<Settings>) => {
+    setSavingSettings(true);
     try {
-      const result = await testFn();
-      setTestResults(prev => ({ ...prev, [serviceId]: result }));
-      // 成功時は接続状態を更新
-      if (result.success) {
-        const status = await api.getConnectionStatus();
-        setConnectionStatus(status);
+      await api.updateSettings({
+        youtubeEnabled: newSettings.youtubeEnabled ?? settings.youtubeEnabled,
+        youtubePrivacy: newSettings.youtubePrivacy ?? settings.youtubePrivacy,
+        transcriptionEnabled: newSettings.transcriptionEnabled ?? settings.transcriptionEnabled,
+        transcriptionLanguage: newSettings.transcriptionLanguage ?? settings.transcriptionLanguage,
+        summaryEnabled: newSettings.summaryEnabled ?? settings.summaryEnabled,
+        summaryStyle: newSettings.summaryStyle ?? settings.summaryStyle,
+        sheetsEnabled: newSettings.sheetsEnabled ?? settings.sheetsEnabled,
+        notionEnabled: newSettings.notionEnabled ?? settings.notionEnabled,
+      });
+    } catch (err) {
+      console.error('Failed to save settings:', err);
+      setError('設定の保存に失敗しました');
+    } finally {
+      setSavingSettings(false);
+    }
+  }, [settings]);
+
+  // 設定変更ハンドラー（自動保存付き）
+  const handleSettingsChange = (key: keyof Settings, value: boolean | string) => {
+    const newSettings = { ...settings, [key]: value };
+    setSettings(newSettings);
+    saveSettings({ [key]: value });
+  };
+
+  // サービス固有の認証情報を取得
+  const getServiceCredentials = (serviceId: string): Partial<Credentials> => {
+    switch (serviceId) {
+      case 'zoom':
+        return {
+          zoomAccountId: credentials.zoomAccountId,
+          zoomClientId: credentials.zoomClientId,
+          zoomClientSecret: credentials.zoomClientSecret,
+          zoomWebhookSecretToken: credentials.zoomWebhookSecretToken,
+        };
+      case 'openai':
+        return {
+          openaiApiKey: credentials.openaiApiKey,
+        };
+      case 'google':
+        return {
+          googleClientId: credentials.googleClientId,
+          googleClientSecret: credentials.googleClientSecret,
+          googleSpreadsheetId: credentials.googleSpreadsheetId,
+        };
+      case 'notion':
+        return {
+          notionApiKey: credentials.notionApiKey,
+          notionDatabaseId: credentials.notionDatabaseId,
+        };
+      default:
+        return {};
+    }
+  };
+
+  // 認証情報が入力されているかチェック
+  const hasCredentialsInput = (serviceId: string): boolean => {
+    const creds = getServiceCredentials(serviceId);
+    return Object.values(creds).some(v => v && v.trim() !== '');
+  };
+
+  // 接続テスト（認証情報保存 + テスト）
+  const handleTestAndSave = async (serviceId: string, testFn: () => Promise<{ success: boolean; message: string }>) => {
+    setTestingService(serviceId);
+    setError(null);
+
+    try {
+      // 認証情報が入力されていれば保存
+      if (hasCredentialsInput(serviceId)) {
+        const serviceCreds = getServiceCredentials(serviceId);
+        const result = await api.updateCredentials(serviceCreds as Credentials);
+
+        if (result.success) {
+          // 更新されたマスク済み値でsettingsを更新
+          setSettings(prev => ({
+            ...prev,
+            ...(serviceId === 'zoom' && {
+              zoomAccountId: result.zoomAccountId ?? prev.zoomAccountId,
+              zoomClientId: result.zoomClientId ?? prev.zoomClientId,
+              zoomClientSecret: result.zoomClientSecret ?? prev.zoomClientSecret,
+              zoomWebhookSecretToken: result.zoomWebhookSecretToken ?? prev.zoomWebhookSecretToken,
+            }),
+            ...(serviceId === 'openai' && {
+              openaiApiKey: result.openaiApiKey ?? prev.openaiApiKey,
+            }),
+            ...(serviceId === 'google' && {
+              googleClientId: result.googleClientId ?? prev.googleClientId,
+              googleClientSecret: result.googleClientSecret ?? prev.googleClientSecret,
+              googleSpreadsheetId: result.googleSpreadsheetId ?? prev.googleSpreadsheetId,
+            }),
+            ...(serviceId === 'notion' && {
+              notionApiKey: result.notionApiKey ?? prev.notionApiKey,
+              notionDatabaseId: result.notionDatabaseId ?? prev.notionDatabaseId,
+            }),
+          }));
+
+          // 入力フォームをクリア
+          setCredentials(prev => ({
+            ...prev,
+            ...(serviceId === 'zoom' && {
+              zoomAccountId: '',
+              zoomClientId: '',
+              zoomClientSecret: '',
+              zoomWebhookSecretToken: '',
+            }),
+            ...(serviceId === 'openai' && {
+              openaiApiKey: '',
+            }),
+            ...(serviceId === 'google' && {
+              googleClientId: '',
+              googleClientSecret: '',
+              googleSpreadsheetId: '',
+            }),
+            ...(serviceId === 'notion' && {
+              notionApiKey: '',
+              notionDatabaseId: '',
+            }),
+          }));
+        }
       }
+
+      // 接続テスト実行
+      const testResult = await testFn();
+      setTestResults(prev => ({ ...prev, [serviceId]: testResult }));
+
+      // 接続状態を再取得
+      const status = await api.getConnectionStatus();
+      setConnectionStatus(status);
     } catch (err) {
       setTestResults(prev => ({ ...prev, [serviceId]: { success: false, message: '接続テストに失敗しました' } }));
     } finally {
       setTestingService(null);
-    }
-  };
-
-  // 認証情報を保存
-  const handleSaveCredentials = async () => {
-    setSavingCredentials(true);
-    setError(null);
-    setSavedCredentials(false);
-
-    try {
-      const result = await api.updateCredentials(credentials);
-      if (result.success) {
-        setSavedCredentials(true);
-        setTimeout(() => setSavedCredentials(false), 3000);
-        // 更新されたマスク済み値でsettingsを更新
-        setSettings(prev => ({
-          ...prev,
-          zoomAccountId: result.zoomAccountId,
-          zoomClientId: result.zoomClientId,
-          zoomClientSecret: result.zoomClientSecret,
-          zoomWebhookSecretToken: result.zoomWebhookSecretToken,
-          openaiApiKey: result.openaiApiKey,
-          googleClientId: result.googleClientId,
-          googleClientSecret: result.googleClientSecret,
-          googleSpreadsheetId: result.googleSpreadsheetId,
-          notionApiKey: result.notionApiKey,
-          notionDatabaseId: result.notionDatabaseId,
-        }));
-        // 入力フォームをクリア
-        setCredentials({
-          zoomAccountId: '',
-          zoomClientId: '',
-          zoomClientSecret: '',
-          zoomWebhookSecretToken: '',
-          openaiApiKey: '',
-          googleClientId: '',
-          googleClientSecret: '',
-          googleSpreadsheetId: '',
-          notionApiKey: '',
-          notionDatabaseId: '',
-        });
-        // 接続状態を再取得
-        const statusData = await api.getConnectionStatus();
-        setConnectionStatus(statusData);
-      }
-    } catch (err) {
-      setError('認証情報の保存に失敗しました');
-    } finally {
-      setSavingCredentials(false);
-    }
-  };
-
-  // 処理設定を保存
-  const handleSaveSettings = async () => {
-    setSaving(true);
-    setError(null);
-    setSaved(false);
-
-    try {
-      await api.updateSettings({
-        youtubeEnabled: settings.youtubeEnabled,
-        youtubePrivacy: settings.youtubePrivacy,
-        transcriptionEnabled: settings.transcriptionEnabled,
-        transcriptionLanguage: settings.transcriptionLanguage,
-        summaryEnabled: settings.summaryEnabled,
-        summaryStyle: settings.summaryStyle,
-        sheetsEnabled: settings.sheetsEnabled,
-        notionEnabled: settings.notionEnabled,
-      });
-      setSaved(true);
-      setTimeout(() => setSaved(false), 3000);
-    } catch (err) {
-      setError('設定の保存に失敗しました');
-    } finally {
-      setSaving(false);
     }
   };
 
@@ -283,9 +322,7 @@ export default function SetupPage() {
             '  - cloud_recording:read:recording',
             '  - user:read:user',
           ],
-          tips: [
-            'スコープ名で検索すると見つけやすいです',
-          ],
+          tips: ['スコープ名で検索すると見つけやすいです'],
         },
         {
           id: 'zoom-4',
@@ -297,10 +334,7 @@ export default function SetupPage() {
             '「Add Event Subscription」をクリック',
             '以下のWebhook URLを設定:',
           ],
-          tips: [
-            'Webhook URLはhttpsである必要があります',
-            'ngrokなどを使ってローカル開発も可能です',
-          ],
+          tips: ['Webhook URLはhttpsである必要があります'],
         },
         {
           id: 'zoom-5',
@@ -310,8 +344,7 @@ export default function SetupPage() {
             '「Add Events」をクリック',
             '「Recording」カテゴリを展開',
             '「All Recordings have completed」を選択',
-            '「Done」をクリック',
-            '「Save」をクリック',
+            '「Done」→「Save」をクリック',
           ],
         },
         {
@@ -322,9 +355,7 @@ export default function SetupPage() {
             'Event Subscriptionの「Secret Token」をコピー',
             '下記のフォームの「Webhook Secret Token」に入力',
           ],
-          warnings: [
-            'Secret Tokenは必ず保存してください。Webhook署名の検証に使用します',
-          ],
+          warnings: ['Secret Tokenは必ず保存してください'],
         },
         {
           id: 'zoom-7',
@@ -333,7 +364,6 @@ export default function SetupPage() {
           instructions: [
             '「Activation」タブを開く',
             '「Activate your app」をクリック',
-            'アプリのステータスが「Active」になることを確認',
           ],
         },
       ],
@@ -355,9 +385,7 @@ export default function SetupPage() {
             '「Sign up」をクリック',
             'メールアドレスで登録またはGoogleアカウントでログイン',
           ],
-          links: [
-            { label: 'OpenAI Platform', url: 'https://platform.openai.com/' },
-          ],
+          links: [{ label: 'OpenAI Platform', url: 'https://platform.openai.com/' }],
         },
         {
           id: 'openai-2',
@@ -366,33 +394,11 @@ export default function SetupPage() {
           instructions: [
             'ダッシュボードで「API keys」をクリック',
             '「Create new secret key」をクリック',
-            'キーに名前をつけて作成',
             '表示されたキーをコピー（一度しか表示されません）',
             '下記のフォームの「API Key」に入力',
           ],
-          links: [
-            { label: 'API Keys', url: 'https://platform.openai.com/api-keys' },
-          ],
-          warnings: [
-            'APIキーは作成時に一度だけ表示されます。必ずコピーしてください',
-          ],
-        },
-        {
-          id: 'openai-3',
-          title: '利用料金を確認',
-          description: '請求設定とクレジットを確認します',
-          instructions: [
-            '「Settings」→「Billing」をクリック',
-            '支払い方法を設定（クレジットカード）',
-            '必要に応じてUsage limitsを設定',
-          ],
-          links: [
-            { label: 'Billing', url: 'https://platform.openai.com/settings/organization/billing' },
-          ],
-          tips: [
-            '新規アカウントには無料クレジットが付与される場合があります',
-            'Whisper APIは音声1分あたり約$0.006です',
-          ],
+          links: [{ label: 'API Keys', url: 'https://platform.openai.com/api-keys' }],
+          warnings: ['APIキーは作成時に一度だけ表示されます'],
         },
       ],
     },
@@ -410,105 +416,42 @@ export default function SetupPage() {
           description: 'Google Cloud Consoleで新しいプロジェクトを作成します',
           instructions: [
             'Google Cloud Console にアクセス',
-            '上部の「プロジェクトを選択」をクリック',
-            '「新しいプロジェクト」をクリック',
+            '「プロジェクトを選択」→「新しいプロジェクト」',
             'プロジェクト名を入力して「作成」',
           ],
-          links: [
-            { label: 'Google Cloud Console', url: 'https://console.cloud.google.com/' },
-          ],
+          links: [{ label: 'Google Cloud Console', url: 'https://console.cloud.google.com/' }],
         },
         {
           id: 'google-2',
           title: 'APIを有効化',
           description: 'YouTube Data APIとGoogle Sheets APIを有効にします',
           instructions: [
-            '「APIとサービス」→「ライブラリ」を開く',
+            '「APIとサービス」→「ライブラリ」',
             '「YouTube Data API v3」を検索して「有効にする」',
             '「Google Sheets API」を検索して「有効にする」',
-          ],
-          links: [
-            { label: 'YouTube Data API v3', url: 'https://console.cloud.google.com/apis/library/youtube.googleapis.com' },
-            { label: 'Google Sheets API', url: 'https://console.cloud.google.com/apis/library/sheets.googleapis.com' },
           ],
         },
         {
           id: 'google-3',
-          title: 'OAuth同意画面を設定',
-          description: 'アプリの認証画面を設定します',
+          title: 'OAuth認証情報を作成',
+          description: 'Client IDとClient Secretを取得します',
           instructions: [
-            '「APIとサービス」→「OAuth同意画面」を開く',
-            '「外部」を選択して「作成」',
-            'アプリ名、ユーザーサポートメール、デベロッパー連絡先を入力',
-            '「保存して次へ」をクリック',
-            'スコープは後で設定するのでそのまま「保存して次へ」',
-            'テストユーザーに自分のGmailアドレスを追加',
-            '「保存して次へ」で完了',
-          ],
-          tips: [
-            '本番環境で使用する場合はアプリの公開審査が必要です',
-            'テストモードでは登録したテストユーザーのみ利用可能です',
+            '「APIとサービス」→「認証情報」',
+            '「認証情報を作成」→「OAuthクライアントID」',
+            '「ウェブアプリケーション」を選択',
+            '表示されたClient IDとClient Secretをコピー',
           ],
         },
         {
           id: 'google-4',
-          title: 'OAuth認証情報を作成',
-          description: 'Client IDとClient Secretを取得します',
-          instructions: [
-            '「APIとサービス」→「認証情報」を開く',
-            '「認証情報を作成」→「OAuthクライアントID」を選択',
-            'アプリケーションの種類で「ウェブアプリケーション」を選択',
-            '名前を入力',
-            '「承認済みのリダイレクトURI」に以下を追加:',
-            '  http://localhost:3002/auth/google/callback',
-            '  https://your-domain.com/auth/google/callback',
-            '「作成」をクリック',
-            '表示されたClient IDとClient Secretをコピー',
-            '下記のフォームに入力',
-          ],
-          links: [
-            { label: '認証情報', url: 'https://console.cloud.google.com/apis/credentials' },
-          ],
-        },
-        {
-          id: 'google-5',
-          title: 'サーバーでGoogle認証を実行',
-          description: '初回のOAuth認証をサーバーで実行します',
-          instructions: [
-            'サーバーが起動していることを確認',
-            '以下のコマンドをサーバーで実行:',
-            '  npx tsx scripts/google-auth.ts',
-            '表示されるURLをブラウザで開く',
-            'Googleアカウントでログイン',
-            '必要な権限を許可',
-            '認証完了メッセージを確認',
-          ],
-          tips: [
-            '認証情報はサーバーのgoogle-tokens.jsonに保存されます',
-            '認証は一度だけ必要です',
-          ],
-        },
-        {
-          id: 'google-6',
-          title: 'スプレッドシートを作成・共有',
+          title: 'スプレッドシートを準備',
           description: '録画データを記録するスプレッドシートを準備します',
           instructions: [
             'Google Spreadsheetsで新しいスプレッドシートを作成',
             '最初のシートタブ名を「Sheet1」にリネーム',
-            '  ※デフォルトの「シート1」ではエラーになります',
             'URLからスプレッドシートIDをコピー',
-            '  例: https://docs.google.com/spreadsheets/d/[この部分がID]/edit',
-            '下記のフォームの「Spreadsheet ID」に入力',
-            '「共有」ボタンをクリック',
-            '認証したGoogleアカウントを「編集者」として追加',
           ],
-          links: [
-            { label: 'Google Spreadsheets', url: 'https://sheets.google.com/' },
-          ],
-          warnings: [
-            'シートタブ名は必ず「Sheet1」にしてください（日本語の「シート1」ではエラーになります）',
-            'スプレッドシートの共有設定で「編集者」権限を付与してください',
-          ],
+          warnings: ['シートタブ名は必ず「Sheet1」にしてください'],
         },
       ],
     },
@@ -517,7 +460,7 @@ export default function SetupPage() {
       name: 'Notion API',
       icon: <BookOpen className="h-5 w-5" />,
       color: 'text-gray-700',
-      description: 'Notionデータベースへの自動記録に必要（オプション）',
+      description: 'Notionデータベースへの自動記録（オプション）',
       testFn: api.testNotion,
       steps: [
         {
@@ -527,13 +470,9 @@ export default function SetupPage() {
           instructions: [
             'Notion Integrations にアクセス',
             '「新しいインテグレーション」をクリック',
-            '名前を入力（例: Zoom Recording Sync）',
-            '関連付けるワークスペースを選択',
-            '「送信」をクリック',
+            '名前を入力して「送信」',
           ],
-          links: [
-            { label: 'Notion Integrations', url: 'https://www.notion.so/my-integrations' },
-          ],
+          links: [{ label: 'Notion Integrations', url: 'https://www.notion.so/my-integrations' }],
         },
         {
           id: 'notion-2',
@@ -541,62 +480,17 @@ export default function SetupPage() {
           description: 'Internal Integration Tokenをコピーします',
           instructions: [
             '作成したインテグレーションを開く',
-            '「シークレット」セクションで「表示」をクリック',
-            '「Internal Integration Token」をコピー',
-            '下記のフォームの「API Key」に入力',
-          ],
-          tips: [
-            'トークンは「secret_」で始まります',
+            '「シークレット」の「Internal Integration Token」をコピー',
           ],
         },
         {
           id: 'notion-3',
-          title: 'データベースを作成',
-          description: '録画データを保存するデータベースを作成します',
-          instructions: [
-            'Notionで新しいページを作成',
-            '「/database」と入力して「データベース - フルページ」を選択',
-            '以下のプロパティを正確な名前で追加:',
-            '  - タイトル: タイトル型（デフォルトの「名前」列をリネーム）',
-            '  - クライアント: テキスト型',
-            '  - 開催日時: 日付型',
-            '  - YouTube: URL型',
-            '  - Zoom URL: URL型',
-            '  - 時間（分）: 数値型',
-            '  - ホスト: テキスト型',
-            '  - ステータス: セレクト型（COMPLETED, FAILED, PENDING）',
-          ],
-          warnings: [
-            'プロパティ名は完全一致が必要です。「YouTube URL」ではなく「YouTube」としてください',
-            '要約はページ本文に自動追記されます',
-          ],
-        },
-        {
-          id: 'notion-4',
-          title: 'インテグレーションをデータベースに接続',
-          description: 'データベースへのアクセス権限を付与します',
+          title: 'データベースを接続',
+          description: 'データベースにインテグレーションを接続します',
           instructions: [
             'データベースページの右上「...」をクリック',
-            '「接続先」→ 作成したインテグレーション名を選択',
-            '「確認」をクリック',
-          ],
-          warnings: [
-            'この手順を忘れるとAPIからデータベースにアクセスできません',
-          ],
-        },
-        {
-          id: 'notion-5',
-          title: 'Database IDを取得',
-          description: 'データベースのIDをコピーします',
-          instructions: [
-            'データベースページを開く',
+            '「接続先」→ インテグレーション名を選択',
             'URLからDatabase IDをコピー',
-            '  例: https://notion.so/[workspace]/[この32文字がID]?v=...',
-            '  または: https://notion.so/[この32文字がID]?v=...',
-            '下記のフォームの「Database ID」に入力',
-          ],
-          tips: [
-            'IDは32文字の英数字です（ハイフンを含む場合もあります）',
           ],
         },
       ],
@@ -605,20 +499,15 @@ export default function SetupPage() {
 
   const getServiceStatus = (serviceId: string): 'connected' | 'configured' | 'not_configured' => {
     if (!connectionStatus) return 'not_configured';
-
     switch (serviceId) {
       case 'zoom':
-        return connectionStatus.zoom.connected ? 'connected' :
-               connectionStatus.zoom.configured ? 'configured' : 'not_configured';
+        return connectionStatus.zoom.connected ? 'connected' : connectionStatus.zoom.configured ? 'configured' : 'not_configured';
       case 'openai':
-        return connectionStatus.openai.connected ? 'connected' :
-               connectionStatus.openai.configured ? 'configured' : 'not_configured';
+        return connectionStatus.openai.connected ? 'connected' : connectionStatus.openai.configured ? 'configured' : 'not_configured';
       case 'google':
-        return connectionStatus.youtube.connected ? 'connected' :
-               connectionStatus.youtube.configured ? 'configured' : 'not_configured';
+        return connectionStatus.youtube.connected ? 'connected' : connectionStatus.youtube.configured ? 'configured' : 'not_configured';
       case 'notion':
-        return connectionStatus.notion?.connected ? 'connected' :
-               connectionStatus.notion?.configured ? 'configured' : 'not_configured';
+        return connectionStatus.notion?.connected ? 'connected' : connectionStatus.notion?.configured ? 'configured' : 'not_configured';
       default:
         return 'not_configured';
     }
@@ -646,13 +535,6 @@ export default function SetupPage() {
     }
   };
 
-  const ConnectionIndicator = ({ connected, configured, message }: { connected: boolean; configured: boolean; message: string }) => (
-    <div className={`flex items-center text-sm ${connected ? 'text-green-600' : configured ? 'text-yellow-600' : 'text-gray-400'}`}>
-      {connected ? <Wifi className="h-4 w-4 mr-1" /> : <WifiOff className="h-4 w-4 mr-1" />}
-      {message}
-    </div>
-  );
-
   // 各サービスの認証情報フォームを生成
   const renderCredentialsForm = (serviceId: string) => {
     switch (serviceId) {
@@ -661,45 +543,39 @@ export default function SetupPage() {
           <div className="p-4 bg-white border-t border-gray-200">
             <h4 className="font-medium text-gray-900 mb-3 flex items-center">
               <Key className="h-4 w-4 mr-2 text-orange-500" />
-              認証情報を入力
+              認証情報
             </h4>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Account ID
-                  {settings.zoomAccountId && (
-                    <span className="ml-2 text-xs text-gray-500">現在: {settings.zoomAccountId}</span>
-                  )}
+                  {settings.zoomAccountId && <span className="ml-2 text-xs text-green-600">設定済み</span>}
                 </label>
                 <input
                   type="text"
                   value={credentials.zoomAccountId || ''}
                   onChange={(e) => setCredentials({ ...credentials, zoomAccountId: e.target.value })}
-                  placeholder="wK96yaY3SJ6i6X1XtJrfjA"
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                  placeholder={settings.zoomAccountId || 'wK96yaY3SJ6i6X1XtJrfjA'}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary-500"
                 />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Client ID
-                  {settings.zoomClientId && (
-                    <span className="ml-2 text-xs text-gray-500">現在: {settings.zoomClientId}</span>
-                  )}
+                  {settings.zoomClientId && <span className="ml-2 text-xs text-green-600">設定済み</span>}
                 </label>
                 <input
                   type="text"
                   value={credentials.zoomClientId || ''}
                   onChange={(e) => setCredentials({ ...credentials, zoomClientId: e.target.value })}
-                  placeholder="c7uav0NJSCqcJzqOvsl69g"
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                  placeholder={settings.zoomClientId || 'c7uav0NJSCqcJzqOvsl69g'}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary-500"
                 />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Client Secret
-                  {settings.zoomClientSecret && (
-                    <span className="ml-2 text-xs text-gray-500">現在: {settings.zoomClientSecret}</span>
-                  )}
+                  {settings.zoomClientSecret && <span className="ml-2 text-xs text-green-600">設定済み</span>}
                 </label>
                 <div className="relative">
                   <input
@@ -707,13 +583,9 @@ export default function SetupPage() {
                     value={credentials.zoomClientSecret || ''}
                     onChange={(e) => setCredentials({ ...credentials, zoomClientSecret: e.target.value })}
                     placeholder="****"
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 pr-10 focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 pr-10 focus:ring-2 focus:ring-primary-500"
                   />
-                  <button
-                    type="button"
-                    onClick={() => toggleShowSecret('zoomClientSecret')}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                  >
+                  <button type="button" onClick={() => toggleShowSecret('zoomClientSecret')} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
                     {showSecrets['zoomClientSecret'] ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
                 </div>
@@ -721,9 +593,7 @@ export default function SetupPage() {
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Webhook Secret Token
-                  {settings.zoomWebhookSecretToken && (
-                    <span className="ml-2 text-xs text-gray-500">現在: {settings.zoomWebhookSecretToken}</span>
-                  )}
+                  {settings.zoomWebhookSecretToken && <span className="ml-2 text-xs text-green-600">設定済み</span>}
                 </label>
                 <div className="relative">
                   <input
@@ -731,13 +601,9 @@ export default function SetupPage() {
                     value={credentials.zoomWebhookSecretToken || ''}
                     onChange={(e) => setCredentials({ ...credentials, zoomWebhookSecretToken: e.target.value })}
                     placeholder="****"
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 pr-10 focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 pr-10 focus:ring-2 focus:ring-primary-500"
                   />
-                  <button
-                    type="button"
-                    onClick={() => toggleShowSecret('zoomWebhookSecret')}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                  >
+                  <button type="button" onClick={() => toggleShowSecret('zoomWebhookSecret')} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
                     {showSecrets['zoomWebhookSecret'] ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
                 </div>
@@ -750,14 +616,12 @@ export default function SetupPage() {
           <div className="p-4 bg-white border-t border-gray-200">
             <h4 className="font-medium text-gray-900 mb-3 flex items-center">
               <Key className="h-4 w-4 mr-2 text-orange-500" />
-              認証情報を入力
+              認証情報
             </h4>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 API Key
-                {settings.openaiApiKey && (
-                  <span className="ml-2 text-xs text-gray-500">現在: {settings.openaiApiKey}</span>
-                )}
+                {settings.openaiApiKey && <span className="ml-2 text-xs text-green-600">設定済み</span>}
               </label>
               <div className="relative">
                 <input
@@ -765,13 +629,9 @@ export default function SetupPage() {
                   value={credentials.openaiApiKey || ''}
                   onChange={(e) => setCredentials({ ...credentials, openaiApiKey: e.target.value })}
                   placeholder="sk-proj-..."
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 pr-10 focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 pr-10 focus:ring-2 focus:ring-primary-500"
                 />
-                <button
-                  type="button"
-                  onClick={() => toggleShowSecret('openaiApiKey')}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                >
+                <button type="button" onClick={() => toggleShowSecret('openaiApiKey')} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
                   {showSecrets['openaiApiKey'] ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
               </div>
@@ -783,30 +643,26 @@ export default function SetupPage() {
           <div className="p-4 bg-white border-t border-gray-200">
             <h4 className="font-medium text-gray-900 mb-3 flex items-center">
               <Key className="h-4 w-4 mr-2 text-orange-500" />
-              認証情報を入力
+              認証情報
             </h4>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Client ID
-                  {settings.googleClientId && (
-                    <span className="ml-2 text-xs text-gray-500">現在: {settings.googleClientId}</span>
-                  )}
+                  {settings.googleClientId && <span className="ml-2 text-xs text-green-600">設定済み</span>}
                 </label>
                 <input
                   type="text"
                   value={credentials.googleClientId || ''}
                   onChange={(e) => setCredentials({ ...credentials, googleClientId: e.target.value })}
-                  placeholder="xxxxx.apps.googleusercontent.com"
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                  placeholder={settings.googleClientId || 'xxxxx.apps.googleusercontent.com'}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary-500"
                 />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Client Secret
-                  {settings.googleClientSecret && (
-                    <span className="ml-2 text-xs text-gray-500">現在: {settings.googleClientSecret}</span>
-                  )}
+                  {settings.googleClientSecret && <span className="ml-2 text-xs text-green-600">設定済み</span>}
                 </label>
                 <div className="relative">
                   <input
@@ -814,13 +670,9 @@ export default function SetupPage() {
                     value={credentials.googleClientSecret || ''}
                     onChange={(e) => setCredentials({ ...credentials, googleClientSecret: e.target.value })}
                     placeholder="GOCSPX-..."
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 pr-10 focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 pr-10 focus:ring-2 focus:ring-primary-500"
                   />
-                  <button
-                    type="button"
-                    onClick={() => toggleShowSecret('googleClientSecret')}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                  >
+                  <button type="button" onClick={() => toggleShowSecret('googleClientSecret')} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
                     {showSecrets['googleClientSecret'] ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
                 </div>
@@ -828,22 +680,17 @@ export default function SetupPage() {
               <div className="md:col-span-2">
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Spreadsheet ID
-                  {settings.googleSpreadsheetId && (
-                    <span className="ml-2 text-xs text-gray-500">現在: {settings.googleSpreadsheetId}</span>
-                  )}
+                  {settings.googleSpreadsheetId && <span className="ml-2 text-xs text-green-600">設定済み</span>}
                 </label>
                 <input
                   type="text"
                   value={credentials.googleSpreadsheetId || ''}
                   onChange={(e) => setCredentials({ ...credentials, googleSpreadsheetId: e.target.value })}
-                  placeholder="18DBlYtvDPNqn2BmQwmThQ5V9lrd1WQNF-St64W9qg_M"
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                  placeholder={settings.googleSpreadsheetId || '18DBlYtvDPNqn2BmQwmThQ5V9lrd1WQNF...'}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary-500"
                 />
               </div>
             </div>
-            <p className="mt-2 text-xs text-gray-500">
-              YouTube認証にはサーバーでの初回認証が必要です。認証後に接続テストを実行してください。
-            </p>
           </div>
         );
       case 'notion':
@@ -851,15 +698,13 @@ export default function SetupPage() {
           <div className="p-4 bg-white border-t border-gray-200">
             <h4 className="font-medium text-gray-900 mb-3 flex items-center">
               <Key className="h-4 w-4 mr-2 text-orange-500" />
-              認証情報を入力
+              認証情報
             </h4>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  API Key (Integration Token)
-                  {settings.notionApiKey && (
-                    <span className="ml-2 text-xs text-gray-500">現在: {settings.notionApiKey}</span>
-                  )}
+                  API Key
+                  {settings.notionApiKey && <span className="ml-2 text-xs text-green-600">設定済み</span>}
                 </label>
                 <div className="relative">
                   <input
@@ -867,13 +712,9 @@ export default function SetupPage() {
                     value={credentials.notionApiKey || ''}
                     onChange={(e) => setCredentials({ ...credentials, notionApiKey: e.target.value })}
                     placeholder="secret_..."
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 pr-10 focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 pr-10 focus:ring-2 focus:ring-primary-500"
                   />
-                  <button
-                    type="button"
-                    onClick={() => toggleShowSecret('notionApiKey')}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                  >
+                  <button type="button" onClick={() => toggleShowSecret('notionApiKey')} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
                     {showSecrets['notionApiKey'] ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
                 </div>
@@ -881,22 +722,17 @@ export default function SetupPage() {
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Database ID
-                  {settings.notionDatabaseId && (
-                    <span className="ml-2 text-xs text-gray-500">現在: {settings.notionDatabaseId}</span>
-                  )}
+                  {settings.notionDatabaseId && <span className="ml-2 text-xs text-green-600">設定済み</span>}
                 </label>
                 <input
                   type="text"
                   value={credentials.notionDatabaseId || ''}
                   onChange={(e) => setCredentials({ ...credentials, notionDatabaseId: e.target.value })}
-                  placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                  placeholder={settings.notionDatabaseId || 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx'}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary-500"
                 />
               </div>
             </div>
-            <p className="mt-2 text-xs text-gray-500">
-              Notion Integrations (https://www.notion.so/my-integrations) でトークンを作成し、対象データベースに接続を許可してください。
-            </p>
           </div>
         );
       default:
@@ -920,16 +756,10 @@ export default function SetupPage() {
         {/* ヘッダー */}
         <div className="mb-8">
           <h1 className="text-2xl font-bold text-gray-900">セットアップ</h1>
-          <p className="text-gray-500 mt-1">各サービスのAPI設定と処理オプションを設定してください</p>
+          <p className="text-gray-500 mt-1">各サービスのAPI設定と処理オプション</p>
         </div>
 
-        {/* 成功・エラーメッセージ */}
-        {(saved || savedCredentials) && (
-          <div className="mb-4 p-4 bg-green-50 border border-green-200 rounded-lg flex items-center text-green-700">
-            <CheckCircle className="h-5 w-5 mr-2" />
-            {savedCredentials ? 'API認証情報を保存しました' : '設定を保存しました'}
-          </div>
-        )}
+        {/* エラーメッセージ */}
         {error && (
           <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg flex items-center text-red-700">
             <AlertCircle className="h-5 w-5 mr-2" />
@@ -941,15 +771,12 @@ export default function SetupPage() {
         <div className="mb-8 p-4 bg-gray-50 rounded-lg">
           <h2 className="text-sm font-medium text-gray-700 mb-3">接続状況</h2>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {services.map(service => {
-              const status = getServiceStatus(service.id);
-              return (
-                <div key={service.id} className="flex items-center gap-2">
-                  <StatusIcon status={status} />
-                  <span className="text-sm text-gray-600">{service.name}</span>
-                </div>
-              );
-            })}
+            {services.map(service => (
+              <div key={service.id} className="flex items-center gap-2">
+                <StatusIcon status={getServiceStatus(service.id)} />
+                <span className="text-sm text-gray-600">{service.name}</span>
+              </div>
+            ))}
           </div>
         </div>
 
@@ -961,7 +788,6 @@ export default function SetupPage() {
 
             return (
               <div key={service.id} className="border border-gray-200 rounded-lg overflow-hidden">
-                {/* サービスヘッダー */}
                 <button
                   onClick={() => setExpandedService(isExpanded ? null : service.id)}
                   className="w-full flex items-center justify-between p-4 bg-white hover:bg-gray-50 transition-colors"
@@ -976,34 +802,32 @@ export default function SetupPage() {
                       <p className="text-sm text-gray-500">{service.description}</p>
                     </div>
                   </div>
-                  {isExpanded ? (
-                    <ChevronDown className="h-5 w-5 text-gray-400" />
-                  ) : (
-                    <ChevronRight className="h-5 w-5 text-gray-400" />
-                  )}
+                  {isExpanded ? <ChevronDown className="h-5 w-5 text-gray-400" /> : <ChevronRight className="h-5 w-5 text-gray-400" />}
                 </button>
 
-                {/* 展開コンテンツ */}
                 {isExpanded && (
                   <div className="border-t border-gray-200 bg-gray-50">
-                    {/* 接続テストボタン */}
+                    {/* 認証情報フォーム */}
+                    {renderCredentialsForm(service.id)}
+
+                    {/* 保存＆接続テストボタン */}
                     {service.testFn && (
-                      <div className="p-4 bg-white border-b border-gray-200">
+                      <div className="p-4 bg-white border-t border-gray-200">
                         <div className="flex items-center gap-3">
                           <button
-                            onClick={() => handleTest(service.id, service.testFn!)}
+                            onClick={() => handleTestAndSave(service.id, service.testFn!)}
                             disabled={testingService === service.id}
                             className="px-4 py-2 text-sm bg-primary-600 hover:bg-primary-700 text-white rounded-lg flex items-center transition-colors disabled:opacity-50"
                           >
                             {testingService === service.id ? (
                               <>
                                 <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                                テスト中...
+                                {hasCredentialsInput(service.id) ? '保存＆テスト中...' : 'テスト中...'}
                               </>
                             ) : (
                               <>
                                 <RefreshCw className="h-4 w-4 mr-2" />
-                                接続テスト
+                                {hasCredentialsInput(service.id) ? '保存して接続テスト' : '接続テスト'}
                               </>
                             )}
                           </button>
@@ -1016,96 +840,45 @@ export default function SetupPage() {
                       </div>
                     )}
 
-                    {/* 認証情報フォーム */}
-                    {renderCredentialsForm(service.id)}
-
-                    {/* 設定ステップ */}
+                    {/* 設定手順 */}
                     <div className="p-4">
                       <h4 className="font-medium text-gray-900 mb-4">設定手順</h4>
-                      <ol className="space-y-6">
+                      <ol className="space-y-4">
                         {service.steps.map((step, index) => (
-                          <li key={step.id} className="relative">
-                            {/* ステップ番号 */}
-                            <div className="flex items-start gap-4">
-                              <div className="flex-shrink-0 w-8 h-8 flex items-center justify-center bg-primary-100 text-primary-700 rounded-full font-medium text-sm">
-                                {index + 1}
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <h3 className="font-medium text-gray-900">{step.title}</h3>
-                                <p className="text-sm text-gray-500 mt-0.5">{step.description}</p>
-
-                                {/* 手順リスト */}
-                                <ul className="mt-3 space-y-2">
-                                  {step.instructions.map((instruction, i) => (
-                                    <li key={i} className="flex items-start gap-2 text-sm text-gray-600">
-                                      <span className="text-gray-400 mt-0.5">•</span>
-                                      <span>{instruction}</span>
-                                    </li>
+                          <li key={step.id} className="flex items-start gap-3">
+                            <div className="flex-shrink-0 w-6 h-6 flex items-center justify-center bg-primary-100 text-primary-700 rounded-full text-xs font-medium">
+                              {index + 1}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <h3 className="font-medium text-gray-900 text-sm">{step.title}</h3>
+                              <p className="text-xs text-gray-500">{step.description}</p>
+                              <ul className="mt-2 space-y-1">
+                                {step.instructions.map((instruction, i) => (
+                                  <li key={i} className="text-xs text-gray-600">• {instruction}</li>
+                                ))}
+                              </ul>
+                              {step.id === 'zoom-4' && (
+                                <div className="mt-2 p-2 bg-gray-100 rounded flex items-center justify-between gap-2">
+                                  <code className="text-xs text-gray-800 break-all">{webhookUrl}</code>
+                                  <button onClick={() => copyToClipboard(webhookUrl)} className="flex-shrink-0 p-1 text-gray-500 hover:text-gray-700">
+                                    {copiedText === webhookUrl ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
+                                  </button>
+                                </div>
+                              )}
+                              {step.links && step.links.length > 0 && (
+                                <div className="mt-2 flex flex-wrap gap-2">
+                                  {step.links.map((link, i) => (
+                                    <a key={i} href={link.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs text-primary-600 hover:underline">
+                                      {link.label} <ExternalLink className="h-3 w-3" />
+                                    </a>
                                   ))}
-                                </ul>
-
-                                {/* Webhook URL表示（Zoom用） */}
-                                {step.id === 'zoom-4' && (
-                                  <div className="mt-3 p-3 bg-gray-100 rounded-lg">
-                                    <div className="flex items-center justify-between gap-2">
-                                      <code className="text-sm text-gray-800 break-all">{webhookUrl}</code>
-                                      <button
-                                        onClick={() => copyToClipboard(webhookUrl)}
-                                        className="flex-shrink-0 p-1.5 text-gray-500 hover:text-gray-700 hover:bg-gray-200 rounded transition-colors"
-                                        title="コピー"
-                                      >
-                                        {copiedText === webhookUrl ? (
-                                          <Check className="h-4 w-4 text-green-500" />
-                                        ) : (
-                                          <Copy className="h-4 w-4" />
-                                        )}
-                                      </button>
-                                    </div>
-                                  </div>
-                                )}
-
-                                {/* リンク */}
-                                {step.links && step.links.length > 0 && (
-                                  <div className="mt-3 flex flex-wrap gap-2">
-                                    {step.links.map((link, i) => (
-                                      <a
-                                        key={i}
-                                        href={link.url}
-                                        target={link.url.startsWith('http') ? '_blank' : undefined}
-                                        rel={link.url.startsWith('http') ? 'noopener noreferrer' : undefined}
-                                        className="inline-flex items-center gap-1 text-sm text-primary-600 hover:text-primary-700 hover:underline"
-                                      >
-                                        {link.label}
-                                        {link.url.startsWith('http') && <ExternalLink className="h-3 w-3" />}
-                                      </a>
-                                    ))}
-                                  </div>
-                                )}
-
-                                {/* ヒント */}
-                                {step.tips && step.tips.length > 0 && (
-                                  <div className="mt-3 p-3 bg-blue-50 rounded-lg">
-                                    <p className="text-xs font-medium text-blue-700 mb-1">ヒント</p>
-                                    <ul className="space-y-1">
-                                      {step.tips.map((tip, i) => (
-                                        <li key={i} className="text-sm text-blue-600">{tip}</li>
-                                      ))}
-                                    </ul>
-                                  </div>
-                                )}
-
-                                {/* 警告 */}
-                                {step.warnings && step.warnings.length > 0 && (
-                                  <div className="mt-3 p-3 bg-yellow-50 rounded-lg">
-                                    <p className="text-xs font-medium text-yellow-700 mb-1">注意</p>
-                                    <ul className="space-y-1">
-                                      {step.warnings.map((warning, i) => (
-                                        <li key={i} className="text-sm text-yellow-700">{warning}</li>
-                                      ))}
-                                    </ul>
-                                  </div>
-                                )}
-                              </div>
+                                </div>
+                              )}
+                              {step.warnings && step.warnings.length > 0 && (
+                                <div className="mt-2 p-2 bg-yellow-50 rounded text-xs text-yellow-700">
+                                  {step.warnings.map((w, i) => <p key={i}>⚠️ {w}</p>)}
+                                </div>
+                              )}
                             </div>
                           </li>
                         ))}
@@ -1118,223 +891,160 @@ export default function SetupPage() {
           })}
         </div>
 
-        {/* 認証情報保存ボタン */}
-        <div className="mt-6 p-4 bg-orange-50 rounded-lg">
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="font-medium text-orange-900">認証情報を保存</h3>
-              <p className="text-sm text-orange-700">上記で入力した認証情報をまとめて保存します</p>
-            </div>
-            <button
-              onClick={handleSaveCredentials}
-              disabled={savingCredentials}
-              className="flex items-center px-6 py-2 bg-orange-600 hover:bg-orange-700 text-white font-medium rounded-lg transition-colors disabled:opacity-50"
-            >
-              {savingCredentials ? (
-                <>
-                  <Loader2 className="animate-spin h-5 w-5 mr-2" />
-                  保存中...
-                </>
-              ) : (
-                <>
-                  <Key className="h-5 w-5 mr-2" />
-                  認証情報を保存
-                </>
-              )}
-            </button>
-          </div>
-        </div>
-
         {/* 処理設定 */}
         <div className="mt-8">
-          <h2 className="text-lg font-bold text-gray-900 mb-4">処理設定</h2>
-          <div className="space-y-4">
-            {/* YouTube設定 */}
-            <div className="card">
-              <div className="card-header flex items-center">
-                <Youtube className="h-5 w-5 text-red-500 mr-2" />
-                <h3 className="text-base font-semibold text-gray-900">YouTubeアップロード</h3>
-              </div>
-              <div className="card-body space-y-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="font-medium text-gray-900">自動アップロード</p>
-                    <p className="text-sm text-gray-500">録画を自動的にYouTubeにアップロード</p>
-                  </div>
-                  <label className="relative inline-flex items-center cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={settings.youtubeEnabled}
-                      onChange={(e) => setSettings({ ...settings, youtubeEnabled: e.target.checked })}
-                      className="sr-only peer"
-                    />
-                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-600"></div>
-                  </label>
-                </div>
-                {settings.youtubeEnabled && (
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">公開設定</label>
-                    <select
-                      value={settings.youtubePrivacy}
-                      onChange={(e) => setSettings({ ...settings, youtubePrivacy: e.target.value as 'public' | 'unlisted' | 'private' })}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                    >
-                      <option value="private">非公開</option>
-                      <option value="unlisted">限定公開</option>
-                      <option value="public">公開</option>
-                    </select>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* 文字起こし設定 */}
-            <div className="card">
-              <div className="card-header flex items-center">
-                <FileText className="h-5 w-5 text-blue-500 mr-2" />
-                <h3 className="text-base font-semibold text-gray-900">文字起こし（Whisper）</h3>
-              </div>
-              <div className="card-body space-y-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="font-medium text-gray-900">自動文字起こし</p>
-                    <p className="text-sm text-gray-500">OpenAI Whisperで自動的に文字起こし</p>
-                  </div>
-                  <label className="relative inline-flex items-center cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={settings.transcriptionEnabled}
-                      onChange={(e) => setSettings({ ...settings, transcriptionEnabled: e.target.checked })}
-                      className="sr-only peer"
-                    />
-                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-600"></div>
-                  </label>
-                </div>
-                {settings.transcriptionEnabled && (
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">言語</label>
-                    <select
-                      value={settings.transcriptionLanguage}
-                      onChange={(e) => setSettings({ ...settings, transcriptionLanguage: e.target.value })}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                    >
-                      <option value="ja">日本語</option>
-                      <option value="en">英語</option>
-                      <option value="auto">自動検出</option>
-                    </select>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* 要約設定 */}
-            <div className="card">
-              <div className="card-header flex items-center">
-                <SettingsIcon className="h-5 w-5 text-purple-500 mr-2" />
-                <h3 className="text-base font-semibold text-gray-900">要約生成（GPT-4）</h3>
-              </div>
-              <div className="card-body space-y-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="font-medium text-gray-900">自動要約</p>
-                    <p className="text-sm text-gray-500">GPT-4でミーティング内容を自動要約</p>
-                  </div>
-                  <label className="relative inline-flex items-center cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={settings.summaryEnabled}
-                      onChange={(e) => setSettings({ ...settings, summaryEnabled: e.target.checked })}
-                      className="sr-only peer"
-                    />
-                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-600"></div>
-                  </label>
-                </div>
-                {settings.summaryEnabled && (
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">要約スタイル</label>
-                    <select
-                      value={settings.summaryStyle}
-                      onChange={(e) => setSettings({ ...settings, summaryStyle: e.target.value as 'brief' | 'detailed' })}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                    >
-                      <option value="brief">簡潔</option>
-                      <option value="detailed">詳細</option>
-                    </select>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Google Sheets設定 */}
-            <div className="card">
-              <div className="card-header flex items-center">
-                <Table className="h-5 w-5 text-green-500 mr-2" />
-                <h3 className="text-base font-semibold text-gray-900">Google Sheets連携</h3>
-              </div>
-              <div className="card-body">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="font-medium text-gray-900">スプレッドシート連携</p>
-                    <p className="text-sm text-gray-500">処理結果をGoogle Sheetsに自動記録</p>
-                  </div>
-                  <label className="relative inline-flex items-center cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={settings.sheetsEnabled}
-                      onChange={(e) => setSettings({ ...settings, sheetsEnabled: e.target.checked })}
-                      className="sr-only peer"
-                    />
-                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-600"></div>
-                  </label>
-                </div>
-              </div>
-            </div>
-
-            {/* Notion設定 */}
-            <div className="card">
-              <div className="card-header flex items-center">
-                <BookOpen className="h-5 w-5 text-gray-700 mr-2" />
-                <h3 className="text-base font-semibold text-gray-900">Notion連携</h3>
-              </div>
-              <div className="card-body">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="font-medium text-gray-900">Notionデータベース連携</p>
-                    <p className="text-sm text-gray-500">処理結果をNotionに自動記録</p>
-                  </div>
-                  <label className="relative inline-flex items-center cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={settings.notionEnabled}
-                      onChange={(e) => setSettings({ ...settings, notionEnabled: e.target.checked })}
-                      className="sr-only peer"
-                    />
-                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-600"></div>
-                  </label>
-                </div>
-              </div>
-            </div>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-bold text-gray-900">処理設定</h2>
+            {savingSettings && <span className="text-xs text-gray-500 flex items-center"><Loader2 className="h-3 w-3 animate-spin mr-1" />保存中...</span>}
           </div>
-
-          {/* 処理設定保存ボタン */}
-          <div className="mt-6 flex justify-end">
-            <button
-              onClick={handleSaveSettings}
-              disabled={saving}
-              className="flex items-center px-6 py-2 bg-primary-600 hover:bg-primary-700 text-white font-medium rounded-lg transition-colors disabled:opacity-50"
-            >
-              {saving ? (
-                <>
-                  <Loader2 className="animate-spin h-5 w-5 mr-2" />
-                  保存中...
-                </>
-              ) : (
-                <>
-                  <Save className="h-5 w-5 mr-2" />
-                  処理設定を保存
-                </>
+          <div className="space-y-3">
+            {/* YouTube */}
+            <div className="card p-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <Youtube className="h-5 w-5 text-red-500" />
+                  <div>
+                    <p className="font-medium text-gray-900">YouTubeアップロード</p>
+                    <p className="text-xs text-gray-500">録画を自動的にYouTubeにアップロード</p>
+                  </div>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={settings.youtubeEnabled}
+                    onChange={(e) => handleSettingsChange('youtubeEnabled', e.target.checked)}
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-gray-200 peer-focus:ring-4 peer-focus:ring-primary-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-600"></div>
+                </label>
+              </div>
+              {settings.youtubeEnabled && (
+                <div className="mt-3 pl-8">
+                  <select
+                    value={settings.youtubePrivacy}
+                    onChange={(e) => handleSettingsChange('youtubePrivacy', e.target.value)}
+                    className="text-sm border border-gray-300 rounded-lg px-3 py-1.5"
+                  >
+                    <option value="private">非公開</option>
+                    <option value="unlisted">限定公開</option>
+                    <option value="public">公開</option>
+                  </select>
+                </div>
               )}
-            </button>
+            </div>
+
+            {/* 文字起こし */}
+            <div className="card p-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <FileText className="h-5 w-5 text-blue-500" />
+                  <div>
+                    <p className="font-medium text-gray-900">文字起こし（Whisper）</p>
+                    <p className="text-xs text-gray-500">OpenAI Whisperで自動的に文字起こし</p>
+                  </div>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={settings.transcriptionEnabled}
+                    onChange={(e) => handleSettingsChange('transcriptionEnabled', e.target.checked)}
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-gray-200 peer-focus:ring-4 peer-focus:ring-primary-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-600"></div>
+                </label>
+              </div>
+              {settings.transcriptionEnabled && (
+                <div className="mt-3 pl-8">
+                  <select
+                    value={settings.transcriptionLanguage}
+                    onChange={(e) => handleSettingsChange('transcriptionLanguage', e.target.value)}
+                    className="text-sm border border-gray-300 rounded-lg px-3 py-1.5"
+                  >
+                    <option value="ja">日本語</option>
+                    <option value="en">英語</option>
+                    <option value="auto">自動検出</option>
+                  </select>
+                </div>
+              )}
+            </div>
+
+            {/* 要約 */}
+            <div className="card p-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <SettingsIcon className="h-5 w-5 text-purple-500" />
+                  <div>
+                    <p className="font-medium text-gray-900">要約生成（GPT-4）</p>
+                    <p className="text-xs text-gray-500">GPT-4でミーティング内容を自動要約</p>
+                  </div>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={settings.summaryEnabled}
+                    onChange={(e) => handleSettingsChange('summaryEnabled', e.target.checked)}
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-gray-200 peer-focus:ring-4 peer-focus:ring-primary-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-600"></div>
+                </label>
+              </div>
+              {settings.summaryEnabled && (
+                <div className="mt-3 pl-8">
+                  <select
+                    value={settings.summaryStyle}
+                    onChange={(e) => handleSettingsChange('summaryStyle', e.target.value)}
+                    className="text-sm border border-gray-300 rounded-lg px-3 py-1.5"
+                  >
+                    <option value="brief">簡潔</option>
+                    <option value="detailed">詳細</option>
+                  </select>
+                </div>
+              )}
+            </div>
+
+            {/* Google Sheets */}
+            <div className="card p-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <Table className="h-5 w-5 text-green-500" />
+                  <div>
+                    <p className="font-medium text-gray-900">Google Sheets連携</p>
+                    <p className="text-xs text-gray-500">処理結果をGoogle Sheetsに自動記録</p>
+                  </div>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={settings.sheetsEnabled}
+                    onChange={(e) => handleSettingsChange('sheetsEnabled', e.target.checked)}
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-gray-200 peer-focus:ring-4 peer-focus:ring-primary-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-600"></div>
+                </label>
+              </div>
+            </div>
+
+            {/* Notion */}
+            <div className="card p-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <BookOpen className="h-5 w-5 text-gray-700" />
+                  <div>
+                    <p className="font-medium text-gray-900">Notion連携</p>
+                    <p className="text-xs text-gray-500">処理結果をNotionに自動記録</p>
+                  </div>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={settings.notionEnabled}
+                    onChange={(e) => handleSettingsChange('notionEnabled', e.target.checked)}
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-gray-200 peer-focus:ring-4 peer-focus:ring-primary-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-600"></div>
+                </label>
+              </div>
+            </div>
           </div>
         </div>
       </div>
