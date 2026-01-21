@@ -403,7 +403,122 @@ export default function RecordingsPage() {
           </div>
         ) : (
           <>
-            <div className="overflow-x-auto">
+            {/* モバイル用カードレイアウト */}
+            <div className="md:hidden divide-y divide-gray-200">
+              {filteredRecordings.map((recording) => (
+                <div key={recording.id} className="p-4">
+                  {/* タイトルとステータス */}
+                  <div className="flex items-start justify-between gap-2 mb-2">
+                    <button
+                      onClick={() => handleEditOpen(recording)}
+                      className="flex-1 text-left"
+                    >
+                      <span className="text-sm font-medium text-gray-900 line-clamp-2">
+                        {recording.title}
+                      </span>
+                    </button>
+                    <StatusBadge status={recording.status} />
+                  </div>
+
+                  {/* クライアントと日時 */}
+                  <div className="flex items-center gap-2 text-xs text-gray-500 mb-3">
+                    <span>
+                      {format(new Date(recording.meetingDate), 'M/d HH:mm', { locale: ja })}
+                    </span>
+                    <span>•</span>
+                    <span>{recording.duration ? `${recording.duration}分` : '-'}</span>
+                    <span>•</span>
+                    {recording.clientName ? (
+                      <Link
+                        href={`/clients/${encodeURIComponent(recording.clientName)}`}
+                        className="text-primary-600"
+                      >
+                        {recording.clientName}
+                      </Link>
+                    ) : (
+                      <button
+                        onClick={() => handleEditOpen(recording)}
+                        className="text-gray-400"
+                      >
+                        未設定
+                      </button>
+                    )}
+                  </div>
+
+                  {/* 連携状況とアクション */}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <SyncStatusIcon
+                        success={recording.youtubeSuccess}
+                        icon={Youtube}
+                        label="YouTube"
+                        color="text-red-500"
+                      />
+                      <SyncStatusIcon
+                        success={recording.sheetsSuccess}
+                        error={recording.sheetsError}
+                        icon={Table}
+                        label="Sheets"
+                        color="text-green-600"
+                      />
+                      <SyncStatusIcon
+                        success={recording.notionSuccess}
+                        error={recording.notionError}
+                        icon={BookOpen}
+                        label="Notion"
+                        color="text-gray-700"
+                      />
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => handleEditOpen(recording)}
+                        className="p-2 text-gray-400 hover:text-gray-600"
+                        title="編集"
+                      >
+                        <Edit2 className="h-4 w-4" />
+                      </button>
+                      {recording.summary && (
+                        <button
+                          onClick={() => setSelectedRecording(recording)}
+                          className="p-2 text-gray-400 hover:text-primary-600"
+                          title="要約"
+                        >
+                          <FileText className="h-4 w-4" />
+                        </button>
+                      )}
+                      {recording.youtubeUrl && (
+                        <a
+                          href={recording.youtubeUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="p-2 text-gray-400 hover:text-red-500"
+                          title="YouTube"
+                        >
+                          <ExternalLink className="h-4 w-4" />
+                        </a>
+                      )}
+                      {(recording.status === 'FAILED' || !recording.transcript || !recording.summary) && (
+                        <button
+                          onClick={() => handleReprocess(recording.id)}
+                          disabled={reprocessingId === recording.id}
+                          className="p-2 text-gray-400 hover:text-orange-500 disabled:opacity-50"
+                          title="再処理"
+                        >
+                          {reprocessingId === recording.id ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <RefreshCw className="h-4 w-4" />
+                          )}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* デスクトップ用テーブルレイアウト */}
+            <div className="hidden md:block overflow-x-auto">
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-gray-200">
@@ -578,22 +693,22 @@ export default function RecordingsPage() {
 
             {/* ページネーション */}
             {totalPages > 1 && (
-              <div className="flex items-center justify-between px-4 py-3 border-t border-gray-200">
-                <div className="text-sm text-gray-500">
-                  全{total}件中 {page * limit + 1}-{Math.min((page + 1) * limit, total)}件を表示
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 py-3 border-t border-gray-200">
+                <div className="text-sm text-gray-500 order-2 sm:order-1">
+                  全{total}件中 {page * limit + 1}-{Math.min((page + 1) * limit, total)}件
                 </div>
-                <div className="flex gap-2">
+                <div className="flex gap-2 order-1 sm:order-2">
                   <button
                     onClick={() => setPage(page - 1)}
                     disabled={page === 0}
-                    className="px-3 py-1 text-sm border rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+                    className="px-4 py-2 text-sm border rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
                   >
                     前へ
                   </button>
                   <button
                     onClick={() => setPage(page + 1)}
                     disabled={page >= totalPages - 1}
-                    className="px-3 py-1 text-sm border rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+                    className="px-4 py-2 text-sm border rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
                   >
                     次へ
                   </button>
@@ -607,51 +722,51 @@ export default function RecordingsPage() {
 
       {/* 要約モーダル */}
       {selectedRecording && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[80vh] flex flex-col">
-            <div className="flex items-center justify-between p-4 border-b">
-              <h3 className="text-lg font-semibold text-gray-900">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2 sm:p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] sm:max-h-[80vh] flex flex-col">
+            <div className="flex items-start justify-between p-3 sm:p-4 border-b gap-2">
+              <h3 className="text-base sm:text-lg font-semibold text-gray-900 line-clamp-2">
                 {selectedRecording.title}
               </h3>
               <button
                 onClick={() => setSelectedRecording(null)}
-                className="p-1 text-gray-400 hover:text-gray-600 rounded"
+                className="p-1 text-gray-400 hover:text-gray-600 rounded flex-shrink-0"
               >
                 <X className="h-5 w-5" />
               </button>
             </div>
-            <div className="p-4 overflow-y-auto flex-1">
-              <div className="text-sm text-gray-500 mb-3">
+            <div className="p-3 sm:p-4 overflow-y-auto flex-1">
+              <div className="text-xs sm:text-sm text-gray-500 mb-3">
                 {format(new Date(selectedRecording.meetingDate), 'yyyy年M月d日 HH:mm', { locale: ja })}
                 {selectedRecording.clientName && ` • ${selectedRecording.clientName}`}
               </div>
               <div className="prose prose-sm max-w-none">
-                <pre className="whitespace-pre-wrap font-sans text-gray-700 bg-gray-50 p-4 rounded-lg">
+                <pre className="whitespace-pre-wrap font-sans text-sm text-gray-700 bg-gray-50 p-3 sm:p-4 rounded-lg">
                   {selectedRecording.summary}
                 </pre>
               </div>
             </div>
-            <div className="flex justify-between items-center p-4 border-t">
+            <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-2 p-3 sm:p-4 border-t">
               <button
                 onClick={() => {
                   setSelectedRecording(null);
                   handleOpenReportModal(selectedRecording);
                 }}
-                className="px-4 py-2 text-sm text-green-600 hover:bg-green-50 rounded-lg flex items-center gap-1"
+                className="px-3 py-2 text-sm text-green-600 hover:bg-green-50 rounded-lg flex items-center justify-center gap-1 order-2 sm:order-1"
               >
                 <FileOutput className="h-4 w-4" />
-                クライアント報告書を生成
+                <span className="hidden sm:inline">クライアント</span>報告書を生成
               </button>
-              <div className="flex gap-2">
+              <div className="flex gap-2 justify-end order-1 sm:order-2">
                 {selectedRecording.youtubeUrl && (
                   <a
                     href={selectedRecording.youtubeUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="px-4 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg flex items-center gap-1"
+                    className="px-3 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg flex items-center gap-1"
                   >
                     <Youtube className="h-4 w-4" />
-                    YouTube
+                    <span className="hidden sm:inline">YouTube</span>
                   </a>
                 )}
                 <button
@@ -668,8 +783,8 @@ export default function RecordingsPage() {
 
       {/* 編集モーダル */}
       {editingRecording && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2 sm:p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between p-4 border-b">
               <h3 className="text-lg font-semibold text-gray-900">録画を編集</h3>
               <button
