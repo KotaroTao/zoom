@@ -857,7 +857,7 @@ apiRouter.post('/recordings/:id/generate-report', async (req: Request, res: Resp
 });
 
 /**
- * 録画の文字起こし・要約を再処理
+ * 録画の文字起こし・要約を再処理（非同期）
  */
 apiRouter.post('/recordings/:id/reprocess', async (req: Request, res: Response) => {
   try {
@@ -872,12 +872,10 @@ apiRouter.post('/recordings/:id/reprocess', async (req: Request, res: Response) 
       return res.status(404).json({ error: '録画が見つかりません' });
     }
 
-    // インポート（動的にインポート）
-    const { zoomClient } = await import('../../services/zoom/client.js');
-    const { downloadRecordingFile } = await import('../../services/zoom/download.js');
-    const { transcribeWithWhisper } = await import('../../services/transcription/whisper.js');
-    const { generateSummary, summarizeLongText } = await import('../../services/summary/openai.js');
-    const { deleteFile } = await import('../../utils/fileManager.js');
+    // すでに処理中の場合はエラー
+    if (['DOWNLOADING', 'TRANSCRIBING', 'SUMMARIZING'].includes(recording.status)) {
+      return res.status(400).json({ error: '既に処理中です' });
+    }
 
     // ステータスを更新
     await prisma.recording.update({
@@ -885,8 +883,40 @@ apiRouter.post('/recordings/:id/reprocess', async (req: Request, res: Response) 
       data: { status: 'DOWNLOADING', errorMessage: null },
     });
 
+    // 非同期で処理を実行（レスポンスは先に返す）
+    processReprocessing(id, recording).catch((error) => {
+      console.error('Background reprocess error:', error);
+    });
+
+    // 即座にレスポンスを返す
+    res.json({
+      success: true,
+      message: '再処理を開始しました。処理には数分〜十数分かかる場合があります。',
+      status: 'DOWNLOADING',
+    });
+  } catch (error) {
+    console.error('Reprocess error:', error);
+    res.status(500).json({
+      error: error instanceof Error ? error.message : '再処理に失敗しました',
+    });
+  }
+});
+
+/**
+ * 再処理のバックグラウンド処理
+ */
+async function processReprocessing(id: string, recording: { zoomMeetingUuid: string | null; zoomMeetingId: string; clientName: string | null; title: string }) {
+  let downloadedFilePath: string | null = null;
+
+  try {
+    // インポート（動的にインポート）
+    const { zoomClient } = await import('../../services/zoom/client.js');
+    const { downloadRecordingFile } = await import('../../services/zoom/download.js');
+    const { transcribeWithWhisper } = await import('../../services/transcription/whisper.js');
+    const { generateSummary, summarizeLongText } = await import('../../services/summary/openai.js');
+    const { deleteFile } = await import('../../utils/fileManager.js');
+
     // Zoom APIから録画情報を取得してダウンロード
-    let downloadedFilePath: string | null = null;
     let downloadUrl: string | null = null;
 
     if (recording.zoomMeetingUuid) {
@@ -912,7 +942,7 @@ apiRouter.post('/recordings/:id/reprocess', async (req: Request, res: Response) 
         where: { id },
         data: { status: 'FAILED', errorMessage: 'Zoom録画URLを取得できませんでした' },
       });
-      return res.status(400).json({ error: 'Zoom録画URLを取得できませんでした' });
+      return;
     }
 
     // ダウンロード
@@ -930,82 +960,81 @@ apiRouter.post('/recordings/:id/reprocess', async (req: Request, res: Response) 
         where: { id },
         data: { status: 'FAILED', errorMessage: `ダウンロード失敗: ${downloadResult.error}` },
       });
-      return res.status(500).json({ error: `ダウンロード失敗: ${downloadResult.error}` });
+      return;
     }
 
     downloadedFilePath = downloadResult.filePath;
 
-    try {
-      // 文字起こし
-      await prisma.recording.update({
-        where: { id },
-        data: { status: 'TRANSCRIBING' },
-      });
-
-      const transcriptionResult = await transcribeWithWhisper(downloadedFilePath, {
-        language: 'ja',
-      });
-
-      if (!transcriptionResult.success || !transcriptionResult.text) {
-        await prisma.recording.update({
-          where: { id },
-          data: { status: 'FAILED', errorMessage: `文字起こし失敗: ${transcriptionResult.error}` },
-        });
-        return res.status(500).json({ error: `文字起こし失敗: ${transcriptionResult.error}` });
-      }
-
-      const transcript = transcriptionResult.text;
-
-      // 要約
-      await prisma.recording.update({
-        where: { id },
-        data: { status: 'SUMMARIZING', transcript, transcribedAt: new Date() },
-      });
-
-      // 長い文字起こしの場合は分割要約を使用（40,000文字以上）
-      const summaryOptions = {
-        clientName: recording.clientName || undefined,
-        meetingTitle: recording.title,
-        style: 'detailed' as const,
-      };
-      const summaryResult = transcript.length > 40000
-        ? await summarizeLongText(transcript, summaryOptions)
-        : await generateSummary(transcript, summaryOptions);
-
-      let summary: string | null = null;
-      if (summaryResult.success && summaryResult.summary) {
-        summary = summaryResult.summary;
-      }
-
-      // 完了
-      await prisma.recording.update({
-        where: { id },
-        data: {
-          status: 'COMPLETED',
-          summary,
-          summarizedAt: summary ? new Date() : undefined,
-          errorMessage: null,
-        },
-      });
-
-      res.json({
-        success: true,
-        message: '再処理が完了しました',
-        transcript: transcript.substring(0, 500) + '...',
-        hasSummary: !!summary,
-      });
-    } finally {
-      // 一時ファイルを削除
-      if (downloadedFilePath) {
-        await deleteFile(downloadedFilePath).catch(() => {});
-      }
-    }
-  } catch (error) {
-    console.error('Reprocess error:', error);
-    res.status(500).json({
-      error: error instanceof Error ? error.message : '再処理に失敗しました',
+    // 文字起こし
+    await prisma.recording.update({
+      where: { id },
+      data: { status: 'TRANSCRIBING' },
     });
+
+    const transcriptionResult = await transcribeWithWhisper(downloadedFilePath, {
+      language: 'ja',
+    });
+
+    if (!transcriptionResult.success || !transcriptionResult.text) {
+      await prisma.recording.update({
+        where: { id },
+        data: { status: 'FAILED', errorMessage: `文字起こし失敗: ${transcriptionResult.error}` },
+      });
+      return;
+    }
+
+    const transcript = transcriptionResult.text;
+
+    // 要約
+    await prisma.recording.update({
+      where: { id },
+      data: { status: 'SUMMARIZING', transcript, transcribedAt: new Date() },
+    });
+
+    // 長い文字起こしの場合は分割要約を使用（40,000文字以上）
+    const summaryOptions = {
+      clientName: recording.clientName || undefined,
+      meetingTitle: recording.title,
+      style: 'detailed' as const,
+    };
+    const summaryResult = transcript.length > 40000
+      ? await summarizeLongText(transcript, summaryOptions)
+      : await generateSummary(transcript, summaryOptions);
+
+    let summary: string | null = null;
+    if (summaryResult.success && summaryResult.summary) {
+      summary = summaryResult.summary;
+    }
+
+    // 完了
+    await prisma.recording.update({
+      where: { id },
+      data: {
+        status: 'COMPLETED',
+        summary,
+        summarizedAt: summary ? new Date() : undefined,
+        errorMessage: summary ? null : '要約の生成に失敗しました',
+      },
+    });
+
+    console.log(`Reprocess completed for recording ${id}`);
+  } catch (error) {
+    console.error('Reprocess background error:', error);
+    await prisma.recording.update({
+      where: { id },
+      data: {
+        status: 'FAILED',
+        errorMessage: error instanceof Error ? error.message : '再処理に失敗しました',
+      },
+    }).catch(() => {});
+  } finally {
+    // 一時ファイルを削除
+    if (downloadedFilePath) {
+      const { deleteFile } = await import('../../utils/fileManager.js');
+      await deleteFile(downloadedFilePath).catch(() => {});
+    }
   }
+}
 });
 
 /**

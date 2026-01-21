@@ -299,7 +299,7 @@ export default function RecordingsPage() {
 
   // 文字起こし・要約を再処理
   const handleReprocess = async (recordingId: string) => {
-    if (!confirm('この録画の文字起こし・要約を再処理しますか？\n処理には数分かかる場合があります。')) {
+    if (!confirm('この録画の文字起こし・要約を再処理しますか？\n処理には数分〜十数分かかる場合があります。\nページを更新してステータスを確認できます。')) {
       return;
     }
 
@@ -309,13 +309,18 @@ export default function RecordingsPage() {
     try {
       const result = await api.reprocessRecording(recordingId);
       if (result.success) {
-        alert('再処理が完了しました');
+        alert(result.message || '再処理を開始しました。処理には数分〜十数分かかる場合があります。');
         await fetchRecordings();
       }
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : '再処理に失敗しました';
-      setError(errorMessage);
-      alert(`再処理に失敗しました: ${errorMessage}`);
+      // 「既に処理中」エラーは特別扱い
+      if (errorMessage.includes('既に処理中')) {
+        alert('この録画は既に処理中です。しばらくお待ちください。');
+      } else {
+        setError(errorMessage);
+        alert(`再処理に失敗しました: ${errorMessage}`);
+      }
     } finally {
       setReprocessingId(null);
     }
