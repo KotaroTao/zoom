@@ -17,6 +17,9 @@ const MAX_FILE_SIZE = 25 * 1024 * 1024;
 // チャンク分割時のデフォルト長さ（秒）- 10分
 const DEFAULT_CHUNK_DURATION = 600;
 
+// オーバーラップ秒数 - チャンク間で重複させる時間（整合性向上のため）
+const OVERLAP_SECONDS = 30;
+
 // 音声ビットレート（kbps）- 品質とサイズのバランス
 const AUDIO_BITRATE = '64k';
 
@@ -25,6 +28,7 @@ export interface AudioChunk {
   startTime: number;  // 元ファイルでの開始時間（秒）
   duration: number;   // チャンクの長さ（秒）
   index: number;
+  overlapStart: number;  // オーバーラップ開始時間（前チャンクとの重複部分）
 }
 
 export interface AudioExtractionResult {
@@ -221,17 +225,24 @@ export async function extractAndSplitAudio(
 
     const chunks: AudioChunk[] = [];
 
-    // 各チャンクを抽出
+    // 各チャンクを抽出（オーバーラップ付き）
     for (let i = 0; i < chunkCount; i++) {
-      const startTime = i * chunkDuration;
+      // 最初のチャンク以外は、前のチャンクとオーバーラップさせる
+      const overlapStart = i > 0 ? OVERLAP_SECONDS : 0;
+      const startTime = Math.max(0, i * chunkDuration - overlapStart);
       const remainingDuration = totalDuration - startTime;
-      const thisChunkDuration = Math.min(chunkDuration, remainingDuration);
+      // オーバーラップ分を考慮した長さ
+      const thisChunkDuration = Math.min(
+        chunkDuration + (i > 0 ? overlapStart : 0),
+        remainingDuration
+      );
 
       const chunkPath = path.join(tempDir, `${baseFileName}_chunk${i}.mp3`);
 
       logger.debug(`チャンク ${i + 1}/${chunkCount} 抽出中`, {
         startTime: `${Math.round(startTime / 60)}分`,
-        duration: `${Math.round(thisChunkDuration / 60)}分`
+        duration: `${Math.round(thisChunkDuration / 60)}分`,
+        overlapStart: i > 0 ? `${overlapStart}秒` : 'なし'
       });
 
       await extractAudio(videoPath, chunkPath, startTime, thisChunkDuration);
@@ -252,6 +263,7 @@ export async function extractAndSplitAudio(
         startTime,
         duration: thisChunkDuration,
         index: i,
+        overlapStart,  // オーバーラップ情報を保存
       });
 
       logger.debug(`チャンク ${i + 1}/${chunkCount} 完了`, {

@@ -37,26 +37,52 @@ async function getOpenAIClient(): Promise<OpenAI> {
 // Whisperの最大ファイルサイズ（25MB）
 const MAX_FILE_SIZE = 25 * 1024 * 1024;
 
+// オーバーラップ秒数（audioProcessor.tsと同じ値）
+const OVERLAP_SECONDS = 30;
+
+/**
+ * テキストから最後の数文を抽出（コンテキスト用）
+ * 次のチャンクの文字起こし精度向上のため
+ */
+function extractContextFromText(text: string, maxLength: number = 200): string {
+  if (!text || text.length <= maxLength) {
+    return text || '';
+  }
+  // 最後のmaxLength文字を取得し、文の区切りで調整
+  const lastPart = text.slice(-maxLength * 2);
+  const sentences = lastPart.split(/[。．！？\n]/);
+  // 最後の2-3文を取得
+  const contextSentences = sentences.slice(-3).filter(s => s.trim().length > 0);
+  return contextSentences.join('。').slice(-maxLength);
+}
+
 /**
  * 単一ファイルの文字起こし（内部用）
  */
 async function transcribeSingleFile(
   openai: OpenAI,
   filePath: string,
-  options: WhisperOptions
+  options: WhisperOptions,
+  contextPrompt?: string  // 前チャンクからのコンテキスト
 ): Promise<{
   text: string;
   duration?: number;
   language?: string;
   segments?: TranscriptionSegment[];
 }> {
+  // プロンプトを構築（デフォルト + コンテキスト）
+  const basePrompt = options.prompt || 'これは日本語のミーティング録音です。';
+  const fullPrompt = contextPrompt
+    ? `${basePrompt} 前の内容: ${contextPrompt}`
+    : basePrompt;
+
   const response = await openai.audio.transcriptions.create({
     file: fs.createReadStream(filePath),
     model: 'whisper-1',
     language: options.language || 'ja',
     response_format: options.responseFormat || 'verbose_json',
     temperature: options.temperature ?? 0,
-    prompt: options.prompt || 'これは日本語のミーティング録音です。',
+    prompt: fullPrompt,
   });
 
   // レスポンス形式に応じて処理
@@ -95,7 +121,46 @@ async function transcribeSingleFile(
 }
 
 /**
- * 複数チャンクの文字起こし結果を結合
+ * 2つのテキスト間の重複部分を検出して除去
+ * オーバーラップ区間で生成された重複テキストを処理
+ */
+function removeDuplicateText(previousText: string, currentText: string): string {
+  if (!previousText || !currentText) {
+    return currentText;
+  }
+
+  // 前のテキストの最後の部分と、現在のテキストの最初の部分を比較
+  const prevEnd = previousText.slice(-500);  // 最後500文字
+  const currStart = currentText.slice(0, 500);  // 最初500文字
+
+  // 最長共通部分文字列を探す（簡易版）
+  let maxOverlap = 0;
+  let overlapStart = 0;
+
+  // 最小20文字以上の重複を探す
+  for (let len = 20; len <= Math.min(prevEnd.length, currStart.length); len++) {
+    const prevSuffix = prevEnd.slice(-len);
+    const currIdx = currStart.indexOf(prevSuffix);
+    if (currIdx === 0) {
+      maxOverlap = len;
+      overlapStart = 0;
+    }
+  }
+
+  // 重複が見つかった場合、現在のテキストから重複部分を除去
+  if (maxOverlap >= 20) {
+    logger.debug('重複テキスト検出・除去', {
+      overlapLength: maxOverlap,
+      overlap: currentText.slice(0, maxOverlap).slice(0, 50) + '...'
+    });
+    return currentText.slice(maxOverlap).trimStart();
+  }
+
+  return currentText;
+}
+
+/**
+ * 複数チャンクの文字起こし結果を結合（重複除去対応）
  */
 function combineChunkResults(
   chunks: AudioChunk[],
@@ -119,8 +184,14 @@ function combineChunkResults(
   results.forEach((result, index) => {
     const chunk = chunks[index];
     const timeOffset = chunk.startTime;
+    const overlapStart = chunk.overlapStart || 0;
 
-    allTexts.push(result.text);
+    // 最初のチャンク以外は重複除去
+    let processedText = result.text;
+    if (index > 0 && allTexts.length > 0) {
+      processedText = removeDuplicateText(allTexts[allTexts.length - 1], result.text);
+    }
+    allTexts.push(processedText);
 
     if (result.language && !language) {
       language = result.language;
@@ -130,9 +201,17 @@ function combineChunkResults(
       totalDuration = Math.max(totalDuration, timeOffset + result.duration);
     }
 
-    // セグメントのタイムスタンプを調整
+    // セグメントのタイムスタンプを調整（オーバーラップ区間のセグメントはスキップ）
     if (result.segments) {
-      const adjustedSegments = result.segments.map((seg, segIndex) => ({
+      const filteredSegments = result.segments.filter(seg => {
+        // 最初のチャンク以外では、オーバーラップ開始時間より前のセグメントはスキップ
+        if (index > 0 && seg.start < overlapStart) {
+          return false;
+        }
+        return true;
+      });
+
+      const adjustedSegments = filteredSegments.map((seg, segIndex) => ({
         id: allSegments.length + segIndex,
         start: seg.start + timeOffset,
         end: seg.end + timeOffset,
@@ -186,16 +265,23 @@ async function transcribeLargeFile(
       segments?: TranscriptionSegment[];
     }> = [];
 
-    // 各チャンクを順番に文字起こし
+    // 各チャンクを順番に文字起こし（コンテキスト継承）
+    let previousContext: string | undefined;
+
     for (let i = 0; i < chunks.length; i++) {
       const chunk = chunks[i];
       logger.info(`チャンク ${i + 1}/${chunks.length} 文字起こし中`, {
         startTime: `${Math.round(chunk.startTime / 60)}分`,
         duration: `${Math.round(chunk.duration / 60)}分`,
+        hasContext: !!previousContext,
       });
 
-      const result = await transcribeSingleFile(openai, chunk.filePath, options);
+      // 前のチャンクのコンテキストを渡して文字起こし
+      const result = await transcribeSingleFile(openai, chunk.filePath, options, previousContext);
       results.push(result);
+
+      // 次のチャンク用にコンテキストを抽出
+      previousContext = extractContextFromText(result.text);
 
       logger.info(`チャンク ${i + 1}/${chunks.length} 完了`, {
         textLength: result.text.length,
