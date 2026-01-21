@@ -74,10 +74,28 @@ export interface RecordingsResponse {
 }
 
 export interface Client {
+  id?: string;
   name: string;
+  description?: string | null;
+  color?: string | null;
+  isActive?: boolean;
   recordingCount: number;
   totalDuration: number;
   lastMeetingDate: string | null;
+}
+
+export interface ClientInput {
+  name: string;
+  description?: string;
+  color?: string;
+}
+
+export interface ClientUpdateInput {
+  id: string;
+  name?: string;
+  description?: string;
+  color?: string;
+  isActive?: boolean;
 }
 
 export interface ClientsResponse {
@@ -230,6 +248,32 @@ export const api = {
    * クライアント一覧を取得
    */
   getClients: () => fetchApi<ClientsResponse>('/clients'),
+
+  /**
+   * クライアントを作成
+   */
+  createClient: (data: ClientInput) =>
+    fetchApi<{ success: boolean; client: Client }>('/clients', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  /**
+   * クライアントを更新
+   */
+  updateClient: (data: ClientUpdateInput) =>
+    fetchApi<{ success: boolean; client: Client }>('/clients', {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+
+  /**
+   * クライアントを削除
+   */
+  deleteClient: (id: string) =>
+    fetchApi<{ success: boolean }>(`/clients?id=${id}`, {
+      method: 'DELETE',
+    }),
 
   /**
    * クライアントの録画一覧を取得
