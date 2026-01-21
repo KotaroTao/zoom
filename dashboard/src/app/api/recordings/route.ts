@@ -49,3 +49,52 @@ export async function GET(request: NextRequest) {
     );
   }
 }
+
+// 録画更新
+export async function PUT(request: NextRequest) {
+  const auth = await getAuthContext();
+  if (!auth) {
+    return unauthorizedResponse();
+  }
+
+  try {
+    const { organizationId } = auth;
+    const body = await request.json();
+    const { id, title, clientName } = body;
+
+    if (!id) {
+      return NextResponse.json(
+        { error: '録画IDは必須です' },
+        { status: 400 }
+      );
+    }
+
+    // 所有権確認
+    const existing = await prisma.recording.findFirst({
+      where: { id, organizationId },
+    });
+
+    if (!existing) {
+      return NextResponse.json(
+        { error: '録画が見つかりません' },
+        { status: 404 }
+      );
+    }
+
+    const recording = await prisma.recording.update({
+      where: { id },
+      data: {
+        ...(title !== undefined && { title: title.trim() }),
+        ...(clientName !== undefined && { clientName: clientName?.trim() || null }),
+      },
+    });
+
+    return NextResponse.json({ success: true, recording });
+  } catch (error) {
+    console.error('Update recording error:', error);
+    return NextResponse.json(
+      { error: '録画の更新に失敗しました' },
+      { status: 500 }
+    );
+  }
+}

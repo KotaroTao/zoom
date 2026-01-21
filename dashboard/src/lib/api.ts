@@ -245,6 +245,15 @@ export const api = {
   getRecording: (id: string) => fetchApi<Recording>(`/recordings/${id}`),
 
   /**
+   * 録画を更新
+   */
+  updateRecording: (data: { id: string; title?: string; clientName?: string }) =>
+    fetchApi<{ success: boolean; recording: Recording }>('/recordings', {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+
+  /**
    * クライアント一覧を取得
    */
   getClients: () => fetchApi<ClientsResponse>('/clients'),

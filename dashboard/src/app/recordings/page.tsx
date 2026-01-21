@@ -19,6 +19,7 @@ import {
   XCircle,
   MinusCircle,
   X,
+  Edit2,
 } from 'lucide-react';
 import { StatusBadge } from '@/components/StatusBadge';
 import { DashboardLayout } from '@/components/DashboardLayout';
@@ -74,30 +75,63 @@ export default function RecordingsPage() {
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [page, setPage] = useState(0);
   const [selectedRecording, setSelectedRecording] = useState<Recording | null>(null);
+  const [editingRecording, setEditingRecording] = useState<Recording | null>(null);
+  const [editForm, setEditForm] = useState({ title: '', clientName: '' });
+  const [saving, setSaving] = useState(false);
   const limit = 20;
 
-  useEffect(() => {
-    const fetchRecordings = async () => {
-      setLoading(true);
-      try {
-        const data = await api.getRecordings({
-          limit,
-          offset: page * limit,
-          status: statusFilter !== 'all' ? statusFilter : undefined,
-        });
-        setRecordings(data.recordings);
-        setTotal(data.total);
-        setError(null);
-      } catch (err) {
-        console.error('Failed to fetch recordings:', err);
-        setError('録画の取得に失敗しました');
-      } finally {
-        setLoading(false);
-      }
-    };
+  const fetchRecordings = async () => {
+    setLoading(true);
+    try {
+      const data = await api.getRecordings({
+        limit,
+        offset: page * limit,
+        status: statusFilter !== 'all' ? statusFilter : undefined,
+      });
+      setRecordings(data.recordings);
+      setTotal(data.total);
+      setError(null);
+    } catch (err) {
+      console.error('Failed to fetch recordings:', err);
+      setError('録画の取得に失敗しました');
+    } finally {
+      setLoading(false);
+    }
+  };
 
+  useEffect(() => {
     fetchRecordings();
   }, [page, statusFilter]);
+
+  const handleEditOpen = (recording: Recording) => {
+    setEditingRecording(recording);
+    setEditForm({
+      title: recording.title,
+      clientName: recording.clientName || '',
+    });
+  };
+
+  const handleEditSave = async () => {
+    if (!editingRecording) return;
+
+    setSaving(true);
+    setError(null);
+
+    try {
+      await api.updateRecording({
+        id: editingRecording.id,
+        title: editForm.title,
+        clientName: editForm.clientName || undefined,
+      });
+      setEditingRecording(null);
+      await fetchRecordings();
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : '保存に失敗しました';
+      setError(errorMessage);
+    } finally {
+      setSaving(false);
+    }
+  };
 
   // クライアント側でのテキスト検索フィルター
   const filteredRecordings = recordings.filter((recording) => {
@@ -262,6 +296,13 @@ export default function RecordingsPage() {
                       </td>
                       <td className="px-4 py-4">
                         <div className="flex items-center justify-end space-x-1">
+                          <button
+                            onClick={() => handleEditOpen(recording)}
+                            className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg"
+                            title="編集"
+                          >
+                            <Edit2 className="h-4 w-4" />
+                          </button>
                           {recording.youtubeUrl && (
                             <a
                               href={recording.youtubeUrl}
@@ -380,6 +421,67 @@ export default function RecordingsPage() {
                 className="px-4 py-2 text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg"
               >
                 閉じる
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 編集モーダル */}
+      {editingRecording && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
+            <div className="flex items-center justify-between p-4 border-b">
+              <h3 className="text-lg font-semibold text-gray-900">録画を編集</h3>
+              <button
+                onClick={() => setEditingRecording(null)}
+                className="p-1 text-gray-400 hover:text-gray-600 rounded"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="p-4 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  タイトル
+                </label>
+                <input
+                  type="text"
+                  value={editForm.title}
+                  onChange={(e) => setEditForm({ ...editForm, title: e.target.value })}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  クライアント名
+                </label>
+                <input
+                  type="text"
+                  value={editForm.clientName}
+                  onChange={(e) => setEditForm({ ...editForm, clientName: e.target.value })}
+                  placeholder="クライアント名を入力"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  空欄にするとクライアント未設定になります
+                </p>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 p-4 border-t">
+              <button
+                onClick={() => setEditingRecording(null)}
+                className="px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-lg"
+              >
+                キャンセル
+              </button>
+              <button
+                onClick={handleEditSave}
+                disabled={saving || !editForm.title.trim()}
+                className="px-4 py-2 text-sm bg-primary-600 hover:bg-primary-700 text-white rounded-lg disabled:opacity-50 flex items-center gap-2"
+              >
+                {saving && <Loader2 className="h-4 w-4 animate-spin" />}
+                保存
               </button>
             </div>
           </div>
