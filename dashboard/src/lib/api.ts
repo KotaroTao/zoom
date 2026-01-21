@@ -293,7 +293,7 @@ export const api = {
   /**
    * 録画を更新
    */
-  updateRecording: (data: { id: string; title?: string; clientName?: string }) =>
+  updateRecording: (data: { id: string; title?: string; clientName?: string | null }) =>
     fetchApi<{ success: boolean; recording: Recording }>('/recordings', {
       method: 'PUT',
       body: JSON.stringify(data),

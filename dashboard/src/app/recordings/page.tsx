@@ -141,7 +141,7 @@ export default function RecordingsPage() {
       await api.updateRecording({
         id: editingRecording.id,
         title: editForm.title,
-        clientName: editForm.clientName || undefined,
+        clientName: editForm.clientName || null,
       });
       setEditingRecording(null);
       await fetchRecordings();

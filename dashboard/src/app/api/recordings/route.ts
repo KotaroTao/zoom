@@ -81,12 +81,19 @@ export async function PUT(request: NextRequest) {
       );
     }
 
+    // clientNameがnullまたは空文字の場合はnullに設定
+    const updateData: Record<string, string | null> = {};
+    if (title !== undefined) {
+      updateData.title = title.trim();
+    }
+    if (clientName !== undefined) {
+      // null, 空文字, 空白のみの場合はnullに
+      updateData.clientName = clientName && clientName.trim() ? clientName.trim() : null;
+    }
+
     const recording = await prisma.recording.update({
       where: { id },
-      data: {
-        ...(title !== undefined && { title: title.trim() }),
-        ...(clientName !== undefined && { clientName: clientName?.trim() || null }),
-      },
+      data: updateData,
     });
 
     return NextResponse.json({ success: true, recording });
