@@ -79,6 +79,8 @@ export interface Client {
   description?: string | null;
   color?: string | null;
   zoomUrl?: string | null;
+  contactUrl?: string | null;
+  contactType?: string | null;
   isActive?: boolean;
   recordingCount: number;
   totalDuration: number;
@@ -90,6 +92,8 @@ export interface ClientInput {
   description?: string;
   color?: string;
   zoomUrl?: string;
+  contactUrl?: string;
+  contactType?: string;
 }
 
 export interface ClientUpdateInput {
@@ -98,6 +102,8 @@ export interface ClientUpdateInput {
   description?: string;
   color?: string;
   zoomUrl?: string;
+  contactUrl?: string;
+  contactType?: string;
   isActive?: boolean;
 }
 

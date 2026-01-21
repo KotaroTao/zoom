@@ -14,6 +14,11 @@ import {
   X,
   Edit2,
   Trash2,
+  MessageCircle,
+  MessageSquare,
+  Hash,
+  Mail,
+  ExternalLink,
 } from 'lucide-react';
 import { DashboardLayout } from '@/components/DashboardLayout';
 import { api, Client } from '@/lib/api';
@@ -29,6 +34,40 @@ const colorOptions = [
   { value: '#6B7280', label: 'グレー' },
 ];
 
+// 連絡ツールオプション
+const contactTypeOptions = [
+  { value: '', label: '未設定' },
+  { value: 'line', label: 'LINE' },
+  { value: 'messenger', label: 'Messenger' },
+  { value: 'chatwork', label: 'ChatWork' },
+  { value: 'slack', label: 'Slack' },
+  { value: 'teams', label: 'Teams' },
+  { value: 'email', label: 'メール' },
+  { value: 'other', label: 'その他' },
+];
+
+// 連絡ツールアイコンを取得
+const getContactIcon = (type: string | null | undefined) => {
+  switch (type) {
+    case 'line':
+      return <MessageCircle className="h-4 w-4 text-green-500" />;
+    case 'messenger':
+      return <MessageCircle className="h-4 w-4 text-blue-500" />;
+    case 'chatwork':
+      return <MessageSquare className="h-4 w-4 text-red-500" />;
+    case 'slack':
+      return <Hash className="h-4 w-4 text-purple-500" />;
+    case 'teams':
+      return <MessageSquare className="h-4 w-4 text-blue-600" />;
+    case 'email':
+      return <Mail className="h-4 w-4 text-gray-600" />;
+    case 'other':
+      return <ExternalLink className="h-4 w-4 text-gray-500" />;
+    default:
+      return null;
+  }
+};
+
 export default function ClientsPage() {
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
@@ -40,6 +79,8 @@ export default function ClientsPage() {
     description: '',
     color: '#3B82F6',
     zoomUrl: '',
+    contactType: '',
+    contactUrl: '',
   });
   const [saving, setSaving] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
@@ -69,10 +110,12 @@ export default function ClientsPage() {
         description: client.description || '',
         color: client.color || '#3B82F6',
         zoomUrl: client.zoomUrl || '',
+        contactType: client.contactType || '',
+        contactUrl: client.contactUrl || '',
       });
     } else {
       setEditingClient(null);
-      setFormData({ name: '', description: '', color: '#3B82F6', zoomUrl: '' });
+      setFormData({ name: '', description: '', color: '#3B82F6', zoomUrl: '', contactType: '', contactUrl: '' });
     }
     setShowModal(true);
   };
@@ -80,7 +123,7 @@ export default function ClientsPage() {
   const handleCloseModal = () => {
     setShowModal(false);
     setEditingClient(null);
-    setFormData({ name: '', description: '', color: '#3B82F6', zoomUrl: '' });
+    setFormData({ name: '', description: '', color: '#3B82F6', zoomUrl: '', contactType: '', contactUrl: '' });
   };
 
   const handleSave = async () => {
@@ -100,6 +143,8 @@ export default function ClientsPage() {
           description: formData.description || undefined,
           color: formData.color,
           zoomUrl: formData.zoomUrl || undefined,
+          contactType: formData.contactType || undefined,
+          contactUrl: formData.contactUrl || undefined,
         });
       } else {
         await api.createClient({
@@ -107,6 +152,8 @@ export default function ClientsPage() {
           description: formData.description || undefined,
           color: formData.color,
           zoomUrl: formData.zoomUrl || undefined,
+          contactType: formData.contactType || undefined,
+          contactUrl: formData.contactUrl || undefined,
         });
       }
       handleCloseModal();
@@ -265,9 +312,23 @@ export default function ClientsPage() {
                             </span>
                           </div>
                           <div className="ml-3">
-                            <span className="text-sm font-medium text-gray-900">
-                              {client.name}
-                            </span>
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm font-medium text-gray-900">
+                                {client.name}
+                              </span>
+                              {client.contactUrl && client.contactType && (
+                                <a
+                                  href={client.contactUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="hover:opacity-70"
+                                  title={`${contactTypeOptions.find(o => o.value === client.contactType)?.label || '連絡'}`}
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  {getContactIcon(client.contactType)}
+                                </a>
+                              )}
+                            </div>
                             {client.description && (
                               <p className="text-xs text-gray-500">{client.description}</p>
                             )}
@@ -385,6 +446,35 @@ export default function ClientsPage() {
                 />
                 <p className="text-xs text-gray-500 mt-1">
                   このURLで行われたミーティングは自動的にこのクライアントに割り当てられます
+                </p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  連絡ツール（任意）
+                </label>
+                <div className="flex gap-2">
+                  <select
+                    value={formData.contactType}
+                    onChange={(e) => setFormData({ ...formData, contactType: e.target.value })}
+                    className="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                  >
+                    {contactTypeOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    type="text"
+                    value={formData.contactUrl}
+                    onChange={(e) => setFormData({ ...formData, contactUrl: e.target.value })}
+                    placeholder="https://..."
+                    className="flex-1 border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                    disabled={!formData.contactType}
+                  />
+                </div>
+                <p className="text-xs text-gray-500 mt-1">
+                  報告書生成後、このURLをワンクリックで開けます
                 </p>
               </div>
               <div>

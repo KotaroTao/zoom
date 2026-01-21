@@ -212,6 +212,8 @@ model Client {
   description    String?
   color          String?  // ダッシュボード表示用カラー
   zoomUrl        String?  // このZoom URLのミーティングを自動割当
+  contactUrl     String?  // 連絡ツールURL（LINE, ChatWork等）
+  contactType    String?  // ツール種別: line, messenger, chatwork, slack, teams, email, other
   isActive       Boolean  @default(true)
 
   createdAt      DateTime @default(now())

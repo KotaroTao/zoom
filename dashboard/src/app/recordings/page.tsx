@@ -23,10 +23,50 @@ import {
   FileOutput,
   Copy,
   Check,
+  MessageCircle,
+  MessageSquare,
+  Hash,
+  Mail,
 } from 'lucide-react';
 import { StatusBadge } from '@/components/StatusBadge';
 import { DashboardLayout } from '@/components/DashboardLayout';
 import { api, Recording, Client, ReportTemplate } from '@/lib/api';
+
+// 連絡ツールアイコンを取得
+const getContactIcon = (type: string | null | undefined) => {
+  switch (type) {
+    case 'line':
+      return <MessageCircle className="h-4 w-4" />;
+    case 'messenger':
+      return <MessageCircle className="h-4 w-4" />;
+    case 'chatwork':
+      return <MessageSquare className="h-4 w-4" />;
+    case 'slack':
+      return <Hash className="h-4 w-4" />;
+    case 'teams':
+      return <MessageSquare className="h-4 w-4" />;
+    case 'email':
+      return <Mail className="h-4 w-4" />;
+    case 'other':
+      return <ExternalLink className="h-4 w-4" />;
+    default:
+      return <ExternalLink className="h-4 w-4" />;
+  }
+};
+
+// 連絡ツール名を取得
+const getContactLabel = (type: string | null | undefined) => {
+  switch (type) {
+    case 'line': return 'LINE';
+    case 'messenger': return 'Messenger';
+    case 'chatwork': return 'ChatWork';
+    case 'slack': return 'Slack';
+    case 'teams': return 'Teams';
+    case 'email': return 'メール';
+    case 'other': return '連絡';
+    default: return '連絡';
+  }
+};
 
 // 同期ステータスアイコンコンポーネント
 function SyncStatusIcon({
@@ -91,6 +131,7 @@ export default function RecordingsPage() {
   const [generatedReport, setGeneratedReport] = useState<string>('');
   const [generating, setGenerating] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [reportClientContact, setReportClientContact] = useState<{ type: string | null; url: string | null } | null>(null);
 
   const fetchRecordings = async () => {
     setLoading(true);
@@ -159,16 +200,33 @@ export default function RecordingsPage() {
     setGeneratedReport('');
     setSelectedTemplateId('');
     setCopied(false);
+    setReportClientContact(null);
 
     try {
-      const data = await api.getTemplates();
-      setTemplates(data.templates);
+      // テンプレートとクライアント情報を並行取得
+      const [templatesData, clientsData] = await Promise.all([
+        api.getTemplates(),
+        api.getClients(),
+      ]);
+
+      setTemplates(templatesData.templates);
       // デフォルトテンプレートを選択
-      const defaultTemplate = data.templates.find(t => t.isDefault);
+      const defaultTemplate = templatesData.templates.find(t => t.isDefault);
       if (defaultTemplate) {
         setSelectedTemplateId(defaultTemplate.id);
-      } else if (data.templates.length > 0) {
-        setSelectedTemplateId(data.templates[0].id);
+      } else if (templatesData.templates.length > 0) {
+        setSelectedTemplateId(templatesData.templates[0].id);
+      }
+
+      // クライアントの連絡先情報を取得
+      if (recording.clientName) {
+        const client = clientsData.clients.find(c => c.name === recording.clientName);
+        if (client?.contactUrl && client?.contactType) {
+          setReportClientContact({
+            type: client.contactType,
+            url: client.contactUrl,
+          });
+        }
       }
     } catch (err) {
       console.error('Failed to fetch templates:', err);
@@ -668,23 +726,38 @@ export default function RecordingsPage() {
                 </div>
               )}
             </div>
-            <div className="flex justify-end gap-2 p-4 border-t">
-              {generatedReport && (
+            <div className="flex justify-between p-4 border-t">
+              <div>
+                {generatedReport && reportClientContact && (
+                  <a
+                    href={reportClientContact.url!}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-4 py-2 text-sm bg-green-600 hover:bg-green-700 text-white rounded-lg flex items-center gap-2"
+                  >
+                    {getContactIcon(reportClientContact.type)}
+                    {getContactLabel(reportClientContact.type)}で送る
+                  </a>
+                )}
+              </div>
+              <div className="flex gap-2">
+                {generatedReport && (
+                  <button
+                    onClick={() => {
+                      setGeneratedReport('');
+                    }}
+                    className="px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-lg"
+                  >
+                    再生成
+                  </button>
+                )}
                 <button
-                  onClick={() => {
-                    setGeneratedReport('');
-                  }}
-                  className="px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-lg"
+                  onClick={() => setReportRecording(null)}
+                  className="px-4 py-2 text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg"
                 >
-                  再生成
+                  閉じる
                 </button>
-              )}
-              <button
-                onClick={() => setReportRecording(null)}
-                className="px-4 py-2 text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg"
-              >
-                閉じる
-              </button>
+              </div>
             </div>
           </div>
         </div>

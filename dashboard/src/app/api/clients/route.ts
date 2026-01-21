@@ -12,6 +12,8 @@ interface ClientInfo {
   description?: string | null;
   color?: string | null;
   zoomUrl?: string | null;
+  contactUrl?: string | null;
+  contactType?: string | null;
   isActive?: boolean;
   recordingCount: number;
   totalDuration: number;
@@ -74,6 +76,8 @@ export async function GET() {
       description: string | null;
       color: string | null;
       zoomUrl: string | null;
+      contactUrl: string | null;
+      contactType: string | null;
       isActive: boolean;
     }) => {
       const stats = statsMap.get(client.name);
@@ -84,6 +88,8 @@ export async function GET() {
         description: client.description,
         color: client.color,
         zoomUrl: client.zoomUrl,
+        contactUrl: client.contactUrl,
+        contactType: client.contactType,
         isActive: client.isActive,
         recordingCount: stats?.recordingCount || 0,
         totalDuration: stats?.totalDuration || 0,
@@ -124,7 +130,7 @@ export async function POST(request: NextRequest) {
   try {
     const { organizationId } = auth;
     const body = await request.json();
-    const { name, description, color, zoomUrl } = body;
+    const { name, description, color, zoomUrl, contactUrl, contactType } = body;
 
     if (!name || typeof name !== 'string' || name.trim() === '') {
       return NextResponse.json(
@@ -157,6 +163,8 @@ export async function POST(request: NextRequest) {
         description: description || null,
         color: color || null,
         zoomUrl: zoomUrl || null,
+        contactUrl: contactUrl || null,
+        contactType: contactType || null,
       },
     });
 
@@ -180,7 +188,7 @@ export async function PUT(request: NextRequest) {
   try {
     const { organizationId } = auth;
     const body = await request.json();
-    const { id, name, description, color, zoomUrl, isActive } = body;
+    const { id, name, description, color, zoomUrl, contactUrl, contactType, isActive } = body;
 
     if (!id) {
       return NextResponse.json(
@@ -208,6 +216,8 @@ export async function PUT(request: NextRequest) {
         ...(description !== undefined && { description }),
         ...(color !== undefined && { color }),
         ...(zoomUrl !== undefined && { zoomUrl: zoomUrl || null }),
+        ...(contactUrl !== undefined && { contactUrl: contactUrl || null }),
+        ...(contactType !== undefined && { contactType: contactType || null }),
         ...(isActive !== undefined && { isActive }),
       },
     });
