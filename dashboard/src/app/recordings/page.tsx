@@ -678,7 +678,7 @@ export default function RecordingsPage() {
                   >
                     <option value="">未設定</option>
                     {clients.map((client) => (
-                      <option key={client.id} value={client.name}>
+                      <option key={client.id || client.name} value={client.name}>
                         {client.name}
                       </option>
                     ))}
