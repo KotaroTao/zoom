@@ -513,6 +513,11 @@ export default function SetupPage() {
     }
   };
 
+  // 各サービスが接続済みかどうかをチェック
+  const isServiceConnected = (serviceId: string): boolean => {
+    return getServiceStatus(serviceId) === 'connected';
+  };
+
   const StatusIcon = ({ status }: { status: 'connected' | 'configured' | 'not_configured' }) => {
     switch (status) {
       case 'connected':
@@ -529,7 +534,7 @@ export default function SetupPage() {
       case 'connected':
         return <span className="px-2 py-0.5 text-xs font-medium bg-green-100 text-green-700 rounded-full">接続済み</span>;
       case 'configured':
-        return <span className="px-2 py-0.5 text-xs font-medium bg-yellow-100 text-yellow-700 rounded-full">設定済み</span>;
+        return <span className="px-2 py-0.5 text-xs font-medium bg-yellow-100 text-yellow-700 rounded-full">要接続テスト</span>;
       default:
         return <span className="px-2 py-0.5 text-xs font-medium bg-gray-100 text-gray-500 rounded-full">未設定</span>;
     }
@@ -899,26 +904,31 @@ export default function SetupPage() {
           </div>
           <div className="space-y-3">
             {/* YouTube */}
-            <div className="card p-4">
+            <div className={`card p-4 ${!isServiceConnected('google') ? 'opacity-60' : ''}`}>
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <Youtube className="h-5 w-5 text-red-500" />
                   <div>
                     <p className="font-medium text-gray-900">YouTubeアップロード</p>
-                    <p className="text-xs text-gray-500">録画を自動的にYouTubeにアップロード</p>
+                    <p className="text-xs text-gray-500">
+                      {isServiceConnected('google')
+                        ? '録画を自動的にYouTubeにアップロード'
+                        : 'Google/YouTube APIの接続が必要です'}
+                    </p>
                   </div>
                 </div>
-                <label className="relative inline-flex items-center cursor-pointer">
+                <label className={`relative inline-flex items-center ${isServiceConnected('google') ? 'cursor-pointer' : 'cursor-not-allowed'}`}>
                   <input
                     type="checkbox"
-                    checked={settings.youtubeEnabled}
+                    checked={settings.youtubeEnabled && isServiceConnected('google')}
                     onChange={(e) => handleSettingsChange('youtubeEnabled', e.target.checked)}
+                    disabled={!isServiceConnected('google')}
                     className="sr-only peer"
                   />
-                  <div className="w-11 h-6 bg-gray-200 peer-focus:ring-4 peer-focus:ring-primary-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-600"></div>
+                  <div className={`w-11 h-6 bg-gray-200 peer-focus:ring-4 peer-focus:ring-primary-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-600 ${!isServiceConnected('google') ? 'peer-checked:bg-gray-400' : ''}`}></div>
                 </label>
               </div>
-              {settings.youtubeEnabled && (
+              {settings.youtubeEnabled && isServiceConnected('google') && (
                 <div className="mt-3 pl-8">
                   <select
                     value={settings.youtubePrivacy}
@@ -934,26 +944,31 @@ export default function SetupPage() {
             </div>
 
             {/* 文字起こし */}
-            <div className="card p-4">
+            <div className={`card p-4 ${!isServiceConnected('openai') ? 'opacity-60' : ''}`}>
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <FileText className="h-5 w-5 text-blue-500" />
                   <div>
                     <p className="font-medium text-gray-900">文字起こし（Whisper）</p>
-                    <p className="text-xs text-gray-500">OpenAI Whisperで自動的に文字起こし</p>
+                    <p className="text-xs text-gray-500">
+                      {isServiceConnected('openai')
+                        ? 'OpenAI Whisperで自動的に文字起こし'
+                        : 'OpenAI APIの接続が必要です'}
+                    </p>
                   </div>
                 </div>
-                <label className="relative inline-flex items-center cursor-pointer">
+                <label className={`relative inline-flex items-center ${isServiceConnected('openai') ? 'cursor-pointer' : 'cursor-not-allowed'}`}>
                   <input
                     type="checkbox"
-                    checked={settings.transcriptionEnabled}
+                    checked={settings.transcriptionEnabled && isServiceConnected('openai')}
                     onChange={(e) => handleSettingsChange('transcriptionEnabled', e.target.checked)}
+                    disabled={!isServiceConnected('openai')}
                     className="sr-only peer"
                   />
-                  <div className="w-11 h-6 bg-gray-200 peer-focus:ring-4 peer-focus:ring-primary-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-600"></div>
+                  <div className={`w-11 h-6 bg-gray-200 peer-focus:ring-4 peer-focus:ring-primary-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-600 ${!isServiceConnected('openai') ? 'peer-checked:bg-gray-400' : ''}`}></div>
                 </label>
               </div>
-              {settings.transcriptionEnabled && (
+              {settings.transcriptionEnabled && isServiceConnected('openai') && (
                 <div className="mt-3 pl-8">
                   <select
                     value={settings.transcriptionLanguage}
@@ -969,26 +984,31 @@ export default function SetupPage() {
             </div>
 
             {/* 要約 */}
-            <div className="card p-4">
+            <div className={`card p-4 ${!isServiceConnected('openai') ? 'opacity-60' : ''}`}>
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <SettingsIcon className="h-5 w-5 text-purple-500" />
                   <div>
                     <p className="font-medium text-gray-900">要約生成（GPT-4）</p>
-                    <p className="text-xs text-gray-500">GPT-4でミーティング内容を自動要約</p>
+                    <p className="text-xs text-gray-500">
+                      {isServiceConnected('openai')
+                        ? 'GPT-4でミーティング内容を自動要約'
+                        : 'OpenAI APIの接続が必要です'}
+                    </p>
                   </div>
                 </div>
-                <label className="relative inline-flex items-center cursor-pointer">
+                <label className={`relative inline-flex items-center ${isServiceConnected('openai') ? 'cursor-pointer' : 'cursor-not-allowed'}`}>
                   <input
                     type="checkbox"
-                    checked={settings.summaryEnabled}
+                    checked={settings.summaryEnabled && isServiceConnected('openai')}
                     onChange={(e) => handleSettingsChange('summaryEnabled', e.target.checked)}
+                    disabled={!isServiceConnected('openai')}
                     className="sr-only peer"
                   />
-                  <div className="w-11 h-6 bg-gray-200 peer-focus:ring-4 peer-focus:ring-primary-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-600"></div>
+                  <div className={`w-11 h-6 bg-gray-200 peer-focus:ring-4 peer-focus:ring-primary-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-600 ${!isServiceConnected('openai') ? 'peer-checked:bg-gray-400' : ''}`}></div>
                 </label>
               </div>
-              {settings.summaryEnabled && (
+              {settings.summaryEnabled && isServiceConnected('openai') && (
                 <div className="mt-3 pl-8">
                   <select
                     value={settings.summaryStyle}
@@ -1003,45 +1023,55 @@ export default function SetupPage() {
             </div>
 
             {/* Google Sheets */}
-            <div className="card p-4">
+            <div className={`card p-4 ${!isServiceConnected('google') ? 'opacity-60' : ''}`}>
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <Table className="h-5 w-5 text-green-500" />
                   <div>
                     <p className="font-medium text-gray-900">Google Sheets連携</p>
-                    <p className="text-xs text-gray-500">処理結果をGoogle Sheetsに自動記録</p>
+                    <p className="text-xs text-gray-500">
+                      {isServiceConnected('google')
+                        ? '処理結果をGoogle Sheetsに自動記録'
+                        : 'Google/YouTube APIの接続が必要です'}
+                    </p>
                   </div>
                 </div>
-                <label className="relative inline-flex items-center cursor-pointer">
+                <label className={`relative inline-flex items-center ${isServiceConnected('google') ? 'cursor-pointer' : 'cursor-not-allowed'}`}>
                   <input
                     type="checkbox"
-                    checked={settings.sheetsEnabled}
+                    checked={settings.sheetsEnabled && isServiceConnected('google')}
                     onChange={(e) => handleSettingsChange('sheetsEnabled', e.target.checked)}
+                    disabled={!isServiceConnected('google')}
                     className="sr-only peer"
                   />
-                  <div className="w-11 h-6 bg-gray-200 peer-focus:ring-4 peer-focus:ring-primary-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-600"></div>
+                  <div className={`w-11 h-6 bg-gray-200 peer-focus:ring-4 peer-focus:ring-primary-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-600 ${!isServiceConnected('google') ? 'peer-checked:bg-gray-400' : ''}`}></div>
                 </label>
               </div>
             </div>
 
             {/* Notion */}
-            <div className="card p-4">
+            <div className={`card p-4 ${!isServiceConnected('notion') ? 'opacity-60' : ''}`}>
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <BookOpen className="h-5 w-5 text-gray-700" />
                   <div>
                     <p className="font-medium text-gray-900">Notion連携</p>
-                    <p className="text-xs text-gray-500">処理結果をNotionに自動記録</p>
+                    <p className="text-xs text-gray-500">
+                      {isServiceConnected('notion')
+                        ? '処理結果をNotionに自動記録'
+                        : 'Notion APIの接続が必要です'}
+                    </p>
                   </div>
                 </div>
-                <label className="relative inline-flex items-center cursor-pointer">
+                <label className={`relative inline-flex items-center ${isServiceConnected('notion') ? 'cursor-pointer' : 'cursor-not-allowed'}`}>
                   <input
                     type="checkbox"
-                    checked={settings.notionEnabled}
+                    checked={settings.notionEnabled && isServiceConnected('notion')}
                     onChange={(e) => handleSettingsChange('notionEnabled', e.target.checked)}
+                    disabled={!isServiceConnected('notion')}
                     className="sr-only peer"
                   />
-                  <div className="w-11 h-6 bg-gray-200 peer-focus:ring-4 peer-focus:ring-primary-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-600"></div>
+                  <div className={`w-11 h-6 bg-gray-200 peer-focus:ring-4 peer-focus:ring-primary-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-600 ${!isServiceConnected('notion') ? 'peer-checked:bg-gray-400' : ''}`}></div>
                 </label>
               </div>
             </div>
