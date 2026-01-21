@@ -3,6 +3,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { getAuthContext, unauthorizedResponse } from '@/lib/api-auth';
 
@@ -246,7 +247,7 @@ export async function PUT(request: NextRequest) {
     }
 
     // トランザクションで更新
-    const client = await prisma.$transaction(async (tx) => {
+    const client = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       // 連絡先の更新（指定された場合）
       if (contacts !== undefined && Array.isArray(contacts)) {
         // 既存の連絡先を削除

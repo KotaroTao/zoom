@@ -27,6 +27,7 @@ import {
   MessageSquare,
   Hash,
   Mail,
+  RefreshCw,
 } from 'lucide-react';
 import { StatusBadge } from '@/components/StatusBadge';
 import { DashboardLayout } from '@/components/DashboardLayout';
@@ -135,6 +136,7 @@ export default function RecordingsPage() {
   const [generating, setGenerating] = useState(false);
   const [copied, setCopied] = useState(false);
   const [reportClientContacts, setReportClientContacts] = useState<{ type: string; url: string; label?: string | null }[]>([]);
+  const [reprocessingId, setReprocessingId] = useState<string | null>(null);
 
   const fetchRecordings = async () => {
     setLoading(true);
@@ -292,6 +294,30 @@ export default function RecordingsPage() {
       setTimeout(() => setCopied(false), 2000);
     } catch (err) {
       console.error('Copy failed:', err);
+    }
+  };
+
+  // 文字起こし・要約を再処理
+  const handleReprocess = async (recordingId: string) => {
+    if (!confirm('この録画の文字起こし・要約を再処理しますか？\n処理には数分かかる場合があります。')) {
+      return;
+    }
+
+    setReprocessingId(recordingId);
+    setError(null);
+
+    try {
+      const result = await api.reprocessRecording(recordingId);
+      if (result.success) {
+        alert('再処理が完了しました');
+        await fetchRecordings();
+      }
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : '再処理に失敗しました';
+      setError(errorMessage);
+      alert(`再処理に失敗しました: ${errorMessage}`);
+    } finally {
+      setReprocessingId(null);
     }
   };
 
@@ -504,6 +530,20 @@ export default function RecordingsPage() {
                             >
                               <Download className="h-4 w-4" />
                             </a>
+                          )}
+                          {(recording.status === 'FAILED' || !recording.transcript) && (
+                            <button
+                              onClick={() => handleReprocess(recording.id)}
+                              disabled={reprocessingId === recording.id}
+                              className="p-2 text-gray-400 hover:text-orange-500 hover:bg-gray-100 rounded-lg disabled:opacity-50"
+                              title="文字起こし・要約を再処理"
+                            >
+                              {reprocessingId === recording.id ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <RefreshCw className="h-4 w-4" />
+                              )}
+                            </button>
                           )}
                         </div>
                       </td>

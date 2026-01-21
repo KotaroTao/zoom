@@ -857,6 +857,154 @@ apiRouter.post('/recordings/:id/generate-report', async (req: Request, res: Resp
 });
 
 /**
+ * 録画の文字起こし・要約を再処理
+ */
+apiRouter.post('/recordings/:id/reprocess', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    // 録画を取得
+    const recording = await prisma.recording.findUnique({
+      where: { id },
+    });
+
+    if (!recording) {
+      return res.status(404).json({ error: '録画が見つかりません' });
+    }
+
+    // インポート（動的にインポート）
+    const { zoomClient } = await import('../../services/zoom/client.js');
+    const { downloadRecordingFile } = await import('../../services/zoom/download.js');
+    const { transcribeWithWhisper } = await import('../../services/transcription/whisper.js');
+    const { generateSummary } = await import('../../services/summary/openai.js');
+    const { deleteFile } = await import('../../utils/fileManager.js');
+
+    // ステータスを更新
+    await prisma.recording.update({
+      where: { id },
+      data: { status: 'DOWNLOADING', errorMessage: null },
+    });
+
+    // Zoom APIから録画情報を取得してダウンロード
+    let downloadedFilePath: string | null = null;
+    let downloadUrl: string | null = null;
+
+    if (recording.zoomMeetingUuid) {
+      try {
+        const recordingDetails = await zoomClient.getRecordingDetails(recording.zoomMeetingUuid);
+        const mp4File = recordingDetails.recording_files?.find(
+          (f: { file_type: string; recording_type?: string }) =>
+            f.file_type === 'MP4' && f.recording_type === 'shared_screen_with_speaker_view'
+        ) || recordingDetails.recording_files?.find(
+          (f: { file_type: string }) => f.file_type === 'MP4'
+        );
+
+        if (mp4File && mp4File.download_url) {
+          downloadUrl = mp4File.download_url;
+        }
+      } catch (apiError) {
+        console.error('Zoom API error:', apiError);
+      }
+    }
+
+    if (!downloadUrl) {
+      await prisma.recording.update({
+        where: { id },
+        data: { status: 'FAILED', errorMessage: 'Zoom録画URLを取得できませんでした' },
+      });
+      return res.status(400).json({ error: 'Zoom録画URLを取得できませんでした' });
+    }
+
+    // ダウンロード
+    const downloadResult = await downloadRecordingFile({
+      fileId: recording.zoomMeetingId,
+      fileType: 'MP4',
+      recordingType: 'shared_screen_with_speaker_view',
+      downloadUrl,
+      fileSize: 0,
+      fileName: `reprocess-${id}.mp4`,
+    });
+
+    if (!downloadResult.success || !downloadResult.filePath) {
+      await prisma.recording.update({
+        where: { id },
+        data: { status: 'FAILED', errorMessage: `ダウンロード失敗: ${downloadResult.error}` },
+      });
+      return res.status(500).json({ error: `ダウンロード失敗: ${downloadResult.error}` });
+    }
+
+    downloadedFilePath = downloadResult.filePath;
+
+    try {
+      // 文字起こし
+      await prisma.recording.update({
+        where: { id },
+        data: { status: 'TRANSCRIBING' },
+      });
+
+      const transcriptionResult = await transcribeWithWhisper(downloadedFilePath, {
+        language: 'ja',
+      });
+
+      if (!transcriptionResult.success || !transcriptionResult.text) {
+        await prisma.recording.update({
+          where: { id },
+          data: { status: 'FAILED', errorMessage: `文字起こし失敗: ${transcriptionResult.error}` },
+        });
+        return res.status(500).json({ error: `文字起こし失敗: ${transcriptionResult.error}` });
+      }
+
+      const transcript = transcriptionResult.text;
+
+      // 要約
+      await prisma.recording.update({
+        where: { id },
+        data: { status: 'SUMMARIZING', transcript, transcribedAt: new Date() },
+      });
+
+      const summaryResult = await generateSummary(transcript, {
+        clientName: recording.clientName || undefined,
+        meetingTitle: recording.title,
+        style: 'detailed',
+      });
+
+      let summary: string | null = null;
+      if (summaryResult.success && summaryResult.summary) {
+        summary = summaryResult.summary;
+      }
+
+      // 完了
+      await prisma.recording.update({
+        where: { id },
+        data: {
+          status: 'COMPLETED',
+          summary,
+          summarizedAt: summary ? new Date() : undefined,
+          errorMessage: null,
+        },
+      });
+
+      res.json({
+        success: true,
+        message: '再処理が完了しました',
+        transcript: transcript.substring(0, 500) + '...',
+        hasSummary: !!summary,
+      });
+    } finally {
+      // 一時ファイルを削除
+      if (downloadedFilePath) {
+        await deleteFile(downloadedFilePath).catch(() => {});
+      }
+    }
+  } catch (error) {
+    console.error('Reprocess error:', error);
+    res.status(500).json({
+      error: error instanceof Error ? error.message : '再処理に失敗しました',
+    });
+  }
+});
+
+/**
  * 録画の報告書を取得
  */
 apiRouter.get('/recordings/:id/report', async (req: Request, res: Response) => {

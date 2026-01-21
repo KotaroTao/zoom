@@ -489,4 +489,13 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ templateId, save }),
     }),
+
+  /**
+   * 文字起こし・要約を再処理
+   */
+  reprocessRecording: (recordingId: string) =>
+    fetchApi<{ success: boolean; message: string; transcript?: string; hasSummary?: boolean }>(
+      `/recordings/${recordingId}/reprocess`,
+      { method: 'POST' }
+    ),
 };
