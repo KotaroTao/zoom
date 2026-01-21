@@ -73,6 +73,14 @@ export interface RecordingsResponse {
   offset: number;
 }
 
+export interface ClientContact {
+  id?: string;
+  type: string;
+  url: string;
+  label?: string | null;
+  sortOrder?: number;
+}
+
 export interface Client {
   id?: string;
   name: string;
@@ -81,6 +89,7 @@ export interface Client {
   zoomUrl?: string | null;
   contactUrl?: string | null;
   contactType?: string | null;
+  contacts?: ClientContact[];
   isActive?: boolean;
   recordingCount: number;
   totalDuration: number;
@@ -94,6 +103,7 @@ export interface ClientInput {
   zoomUrl?: string;
   contactUrl?: string;
   contactType?: string;
+  contacts?: ClientContact[];
 }
 
 export interface ClientUpdateInput {
@@ -104,6 +114,7 @@ export interface ClientUpdateInput {
   zoomUrl?: string;
   contactUrl?: string;
   contactType?: string;
+  contacts?: ClientContact[];
   isActive?: boolean;
 }
 

@@ -131,7 +131,7 @@ export default function RecordingsPage() {
   const [generatedReport, setGeneratedReport] = useState<string>('');
   const [generating, setGenerating] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [reportClientContact, setReportClientContact] = useState<{ type: string | null; url: string | null } | null>(null);
+  const [reportClientContacts, setReportClientContacts] = useState<{ type: string; url: string; label?: string | null }[]>([]);
 
   const fetchRecordings = async () => {
     setLoading(true);
@@ -200,7 +200,7 @@ export default function RecordingsPage() {
     setGeneratedReport('');
     setSelectedTemplateId('');
     setCopied(false);
-    setReportClientContact(null);
+    setReportClientContacts([]);
 
     try {
       // テンプレートとクライアント情報を並行取得
@@ -221,11 +221,12 @@ export default function RecordingsPage() {
       // クライアントの連絡先情報を取得
       if (recording.clientName) {
         const client = clientsData.clients.find(c => c.name === recording.clientName);
-        if (client?.contactUrl && client?.contactType) {
-          setReportClientContact({
-            type: client.contactType,
-            url: client.contactUrl,
-          });
+        if (client?.contacts && client.contacts.length > 0) {
+          setReportClientContacts(client.contacts.map(c => ({
+            type: c.type,
+            url: c.url,
+            label: c.label,
+          })));
         }
       }
     } catch (err) {
@@ -727,17 +728,20 @@ export default function RecordingsPage() {
               )}
             </div>
             <div className="flex justify-between p-4 border-t">
-              <div>
-                {generatedReport && reportClientContact && (
-                  <a
-                    href={reportClientContact.url!}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="px-4 py-2 text-sm bg-green-600 hover:bg-green-700 text-white rounded-lg flex items-center gap-2"
-                  >
-                    {getContactIcon(reportClientContact.type)}
-                    {getContactLabel(reportClientContact.type)}で送る
-                  </a>
+              <div className="flex gap-2">
+                {generatedReport && reportClientContacts.length > 0 && (
+                  reportClientContacts.map((contact, index) => (
+                    <a
+                      key={index}
+                      href={contact.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-3 py-2 text-sm bg-green-600 hover:bg-green-700 text-white rounded-lg flex items-center gap-2"
+                    >
+                      {getContactIcon(contact.type)}
+                      {contact.label || getContactLabel(contact.type)}
+                    </a>
+                  ))
                 )}
               </div>
               <div className="flex gap-2">

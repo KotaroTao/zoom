@@ -21,7 +21,7 @@ import {
   ExternalLink,
 } from 'lucide-react';
 import { DashboardLayout } from '@/components/DashboardLayout';
-import { api, Client } from '@/lib/api';
+import { api, Client, ClientContact } from '@/lib/api';
 
 // カラーオプション
 const colorOptions = [
@@ -79,8 +79,7 @@ export default function ClientsPage() {
     description: '',
     color: '#3B82F6',
     zoomUrl: '',
-    contactType: '',
-    contactUrl: '',
+    contacts: [] as { type: string; url: string; label: string }[],
   });
   const [saving, setSaving] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
@@ -110,12 +109,15 @@ export default function ClientsPage() {
         description: client.description || '',
         color: client.color || '#3B82F6',
         zoomUrl: client.zoomUrl || '',
-        contactType: client.contactType || '',
-        contactUrl: client.contactUrl || '',
+        contacts: client.contacts?.map(c => ({
+          type: c.type,
+          url: c.url,
+          label: c.label || '',
+        })) || [],
       });
     } else {
       setEditingClient(null);
-      setFormData({ name: '', description: '', color: '#3B82F6', zoomUrl: '', contactType: '', contactUrl: '' });
+      setFormData({ name: '', description: '', color: '#3B82F6', zoomUrl: '', contacts: [] });
     }
     setShowModal(true);
   };
@@ -123,7 +125,30 @@ export default function ClientsPage() {
   const handleCloseModal = () => {
     setShowModal(false);
     setEditingClient(null);
-    setFormData({ name: '', description: '', color: '#3B82F6', zoomUrl: '', contactType: '', contactUrl: '' });
+    setFormData({ name: '', description: '', color: '#3B82F6', zoomUrl: '', contacts: [] });
+  };
+
+  // 連絡先を追加
+  const handleAddContact = () => {
+    setFormData({
+      ...formData,
+      contacts: [...formData.contacts, { type: 'line', url: '', label: '' }],
+    });
+  };
+
+  // 連絡先を削除
+  const handleRemoveContact = (index: number) => {
+    setFormData({
+      ...formData,
+      contacts: formData.contacts.filter((_, i) => i !== index),
+    });
+  };
+
+  // 連絡先を更新
+  const handleUpdateContact = (index: number, field: 'type' | 'url' | 'label', value: string) => {
+    const newContacts = [...formData.contacts];
+    newContacts[index] = { ...newContacts[index], [field]: value };
+    setFormData({ ...formData, contacts: newContacts });
   };
 
   const handleSave = async () => {
@@ -135,6 +160,16 @@ export default function ClientsPage() {
     setSaving(true);
     setError(null);
 
+    // URLが入力されている連絡先のみを送信
+    const validContacts = formData.contacts
+      .filter(c => c.url.trim())
+      .map((c, index) => ({
+        type: c.type,
+        url: c.url.trim(),
+        label: c.label.trim() || null,
+        sortOrder: index,
+      }));
+
     try {
       if (editingClient?.id) {
         await api.updateClient({
@@ -143,8 +178,7 @@ export default function ClientsPage() {
           description: formData.description || undefined,
           color: formData.color,
           zoomUrl: formData.zoomUrl || undefined,
-          contactType: formData.contactType || undefined,
-          contactUrl: formData.contactUrl || undefined,
+          contacts: validContacts,
         });
       } else {
         await api.createClient({
@@ -152,8 +186,7 @@ export default function ClientsPage() {
           description: formData.description || undefined,
           color: formData.color,
           zoomUrl: formData.zoomUrl || undefined,
-          contactType: formData.contactType || undefined,
-          contactUrl: formData.contactUrl || undefined,
+          contacts: validContacts,
         });
       }
       handleCloseModal();
@@ -316,17 +349,22 @@ export default function ClientsPage() {
                               <span className="text-sm font-medium text-gray-900">
                                 {client.name}
                               </span>
-                              {client.contactUrl && client.contactType && (
-                                <a
-                                  href={client.contactUrl}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="hover:opacity-70"
-                                  title={`${contactTypeOptions.find(o => o.value === client.contactType)?.label || '連絡'}`}
-                                  onClick={(e) => e.stopPropagation()}
-                                >
-                                  {getContactIcon(client.contactType)}
-                                </a>
+                              {client.contacts && client.contacts.length > 0 && (
+                                <div className="flex items-center gap-1">
+                                  {client.contacts.map((contact, index) => (
+                                    <a
+                                      key={index}
+                                      href={contact.url}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="hover:opacity-70"
+                                      title={contact.label || contactTypeOptions.find(o => o.value === contact.type)?.label || '連絡'}
+                                      onClick={(e) => e.stopPropagation()}
+                                    >
+                                      {getContactIcon(contact.type)}
+                                    </a>
+                                  ))}
+                                </div>
                               )}
                             </div>
                             {client.description && (
@@ -449,32 +487,63 @@ export default function ClientsPage() {
                 </p>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  連絡ツール（任意）
-                </label>
-                <div className="flex gap-2">
-                  <select
-                    value={formData.contactType}
-                    onChange={(e) => setFormData({ ...formData, contactType: e.target.value })}
-                    className="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-sm font-medium text-gray-700">
+                    連絡ツール（任意）
+                  </label>
+                  <button
+                    type="button"
+                    onClick={handleAddContact}
+                    className="text-xs text-primary-600 hover:text-primary-700 flex items-center gap-1"
                   >
-                    {contactTypeOptions.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                  <input
-                    type="text"
-                    value={formData.contactUrl}
-                    onChange={(e) => setFormData({ ...formData, contactUrl: e.target.value })}
-                    placeholder="https://..."
-                    className="flex-1 border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                    disabled={!formData.contactType}
-                  />
+                    <Plus className="h-3 w-3" />
+                    追加
+                  </button>
                 </div>
+                {formData.contacts.length === 0 ? (
+                  <p className="text-sm text-gray-400 py-2">連絡先が登録されていません</p>
+                ) : (
+                  <div className="space-y-2">
+                    {formData.contacts.map((contact, index) => (
+                      <div key={index} className="flex gap-2 items-start">
+                        <select
+                          value={contact.type}
+                          onChange={(e) => handleUpdateContact(index, 'type', e.target.value)}
+                          className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                        >
+                          {contactTypeOptions.filter(o => o.value).map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                        <input
+                          type="text"
+                          value={contact.url}
+                          onChange={(e) => handleUpdateContact(index, 'url', e.target.value)}
+                          placeholder="URL"
+                          className="flex-1 border border-gray-300 rounded-lg px-2 py-1.5 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                        />
+                        <input
+                          type="text"
+                          value={contact.label}
+                          onChange={(e) => handleUpdateContact(index, 'label', e.target.value)}
+                          placeholder="表示名（任意）"
+                          className="w-24 border border-gray-300 rounded-lg px-2 py-1.5 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveContact(index)}
+                          className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
                 <p className="text-xs text-gray-500 mt-1">
-                  報告書生成後、このURLをワンクリックで開けます
+                  報告書生成後、連絡先をワンクリックで開けます
                 </p>
               </div>
               <div>

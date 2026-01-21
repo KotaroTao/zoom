@@ -6,6 +6,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { getAuthContext, unauthorizedResponse } from '@/lib/api-auth';
 
+interface ContactInfo {
+  id?: string;
+  type: string;
+  url: string;
+  label?: string | null;
+  sortOrder?: number;
+}
+
 interface ClientInfo {
   id?: string;
   name: string | null;
@@ -14,6 +22,7 @@ interface ClientInfo {
   zoomUrl?: string | null;
   contactUrl?: string | null;
   contactType?: string | null;
+  contacts?: ContactInfo[];
   isActive?: boolean;
   recordingCount: number;
   totalDuration: number;
@@ -29,10 +38,15 @@ export async function GET() {
   try {
     const { organizationId } = auth;
 
-    // 登録済みクライアントを取得
+    // 登録済みクライアントを取得（連絡先も含む）
     const registeredClients = await prisma.client.findMany({
       where: { organizationId },
       orderBy: { name: 'asc' },
+      include: {
+        contacts: {
+          orderBy: { sortOrder: 'asc' },
+        },
+      },
     });
 
     // 録画からクライアント統計を集計
@@ -79,6 +93,7 @@ export async function GET() {
       contactUrl: string | null;
       contactType: string | null;
       isActive: boolean;
+      contacts: { id: string; type: string; url: string; label: string | null; sortOrder: number }[];
     }) => {
       const stats = statsMap.get(client.name);
       statsMap.delete(client.name); // 処理済みとしてマーク
@@ -90,6 +105,13 @@ export async function GET() {
         zoomUrl: client.zoomUrl,
         contactUrl: client.contactUrl,
         contactType: client.contactType,
+        contacts: client.contacts.map(c => ({
+          id: c.id,
+          type: c.type,
+          url: c.url,
+          label: c.label,
+          sortOrder: c.sortOrder,
+        })),
         isActive: client.isActive,
         recordingCount: stats?.recordingCount || 0,
         totalDuration: stats?.totalDuration || 0,
@@ -130,7 +152,7 @@ export async function POST(request: NextRequest) {
   try {
     const { organizationId } = auth;
     const body = await request.json();
-    const { name, description, color, zoomUrl, contactUrl, contactType } = body;
+    const { name, description, color, zoomUrl, contactUrl, contactType, contacts } = body;
 
     if (!name || typeof name !== 'string' || name.trim() === '') {
       return NextResponse.json(
@@ -156,6 +178,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // クライアントと連絡先を作成
     const client = await prisma.client.create({
       data: {
         organizationId,
@@ -165,6 +188,19 @@ export async function POST(request: NextRequest) {
         zoomUrl: zoomUrl || null,
         contactUrl: contactUrl || null,
         contactType: contactType || null,
+        contacts: contacts && Array.isArray(contacts) ? {
+          create: contacts.map((c: ContactInfo, index: number) => ({
+            type: c.type,
+            url: c.url,
+            label: c.label || null,
+            sortOrder: c.sortOrder ?? index,
+          })),
+        } : undefined,
+      },
+      include: {
+        contacts: {
+          orderBy: { sortOrder: 'asc' },
+        },
       },
     });
 
@@ -188,7 +224,7 @@ export async function PUT(request: NextRequest) {
   try {
     const { organizationId } = auth;
     const body = await request.json();
-    const { id, name, description, color, zoomUrl, contactUrl, contactType, isActive } = body;
+    const { id, name, description, color, zoomUrl, contactUrl, contactType, contacts, isActive } = body;
 
     if (!id) {
       return NextResponse.json(
@@ -209,17 +245,47 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    const client = await prisma.client.update({
-      where: { id },
-      data: {
-        ...(name !== undefined && { name: name.trim() }),
-        ...(description !== undefined && { description }),
-        ...(color !== undefined && { color }),
-        ...(zoomUrl !== undefined && { zoomUrl: zoomUrl || null }),
-        ...(contactUrl !== undefined && { contactUrl: contactUrl || null }),
-        ...(contactType !== undefined && { contactType: contactType || null }),
-        ...(isActive !== undefined && { isActive }),
-      },
+    // トランザクションで更新
+    const client = await prisma.$transaction(async (tx) => {
+      // 連絡先の更新（指定された場合）
+      if (contacts !== undefined && Array.isArray(contacts)) {
+        // 既存の連絡先を削除
+        await tx.clientContact.deleteMany({
+          where: { clientId: id },
+        });
+
+        // 新しい連絡先を作成
+        if (contacts.length > 0) {
+          await tx.clientContact.createMany({
+            data: contacts.map((c: ContactInfo, index: number) => ({
+              clientId: id,
+              type: c.type,
+              url: c.url,
+              label: c.label || null,
+              sortOrder: c.sortOrder ?? index,
+            })),
+          });
+        }
+      }
+
+      // クライアント本体を更新
+      return tx.client.update({
+        where: { id },
+        data: {
+          ...(name !== undefined && { name: name.trim() }),
+          ...(description !== undefined && { description }),
+          ...(color !== undefined && { color }),
+          ...(zoomUrl !== undefined && { zoomUrl: zoomUrl || null }),
+          ...(contactUrl !== undefined && { contactUrl: contactUrl || null }),
+          ...(contactType !== undefined && { contactType: contactType || null }),
+          ...(isActive !== undefined && { isActive }),
+        },
+        include: {
+          contacts: {
+            orderBy: { sortOrder: 'asc' },
+          },
+        },
+      });
     });
 
     return NextResponse.json({ success: true, client });

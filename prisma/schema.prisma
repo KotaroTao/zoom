@@ -212,15 +212,39 @@ model Client {
   description    String?
   color          String?  // ダッシュボード表示用カラー
   zoomUrl        String?  // このZoom URLのミーティングを自動割当
-  contactUrl     String?  // 連絡ツールURL（LINE, ChatWork等）
-  contactType    String?  // ツール種別: line, messenger, chatwork, slack, teams, email, other
+  contactUrl     String?  // 連絡ツールURL（LINE, ChatWork等）- 後方互換性のため残す
+  contactType    String?  // ツール種別 - 後方互換性のため残す
   isActive       Boolean  @default(true)
 
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
+  // リレーション
+  contacts       ClientContact[]
+
   @@unique([organizationId, name])
   @@index([organizationId])
+}
+
+// -------------------------------------------
+// クライアント連絡先（複数登録可能）
+// -------------------------------------------
+model ClientContact {
+  id             String   @id @default(cuid())
+
+  // クライアント
+  clientId       String
+  client         Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  type           String   // line, messenger, chatwork, slack, teams, email, other
+  url            String   // 連絡ツールURL
+  label          String?  // 表示名（任意、例：「担当者A LINE」）
+  sortOrder      Int      @default(0)  // 表示順
+
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([clientId])
 }
 
 // -------------------------------------------
