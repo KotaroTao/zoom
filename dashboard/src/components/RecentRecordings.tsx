@@ -105,7 +105,7 @@ export function RecentRecordings() {
   const fetchClients = async () => {
     try {
       const data = await api.getClients();
-      setClients(data);
+      setClients(data.clients);
     } catch (err) {
       console.error('Failed to fetch clients:', err);
     }
