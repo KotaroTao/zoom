@@ -531,7 +531,7 @@ export default function RecordingsPage() {
                               <Download className="h-4 w-4" />
                             </a>
                           )}
-                          {(recording.status === 'FAILED' || !recording.transcript) && (
+                          {(recording.status === 'FAILED' || !recording.transcript || !recording.summary) && (
                             <button
                               onClick={() => handleReprocess(recording.id)}
                               disabled={reprocessingId === recording.id}
