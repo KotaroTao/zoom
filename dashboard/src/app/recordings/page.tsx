@@ -28,6 +28,7 @@ import {
   Hash,
   Mail,
   RefreshCw,
+  Trash2,
 } from 'lucide-react';
 import { StatusBadge } from '@/components/StatusBadge';
 import { DashboardLayout } from '@/components/DashboardLayout';
@@ -138,6 +139,7 @@ export default function RecordingsPage() {
   const [copied, setCopied] = useState(false);
   const [reportClientContacts, setReportClientContacts] = useState<{ type: string; url: string; label?: string | null }[]>([]);
   const [reprocessingId, setReprocessingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const fetchRecordings = async () => {
     setLoading(true);
@@ -327,6 +329,28 @@ export default function RecordingsPage() {
     }
   };
 
+  // 録画を削除
+  const handleDelete = async (recordingId: string, recordingTitle: string) => {
+    if (!confirm(`「${recordingTitle}」を削除しますか？\n\nこの操作は取り消せません。`)) {
+      return;
+    }
+
+    setDeletingId(recordingId);
+    setError(null);
+
+    try {
+      await api.deleteRecording(recordingId);
+      alert('録画を削除しました');
+      await fetchRecordings();
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : '削除に失敗しました';
+      setError(errorMessage);
+      alert(`削除に失敗しました: ${errorMessage}`);
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
   // クライアント側でのテキスト検索フィルター
   const filteredRecordings = recordings.filter((recording) => {
     if (!searchQuery) return true;
@@ -511,6 +535,18 @@ export default function RecordingsPage() {
                           )}
                         </button>
                       )}
+                      <button
+                        onClick={() => handleDelete(recording.id, recording.title)}
+                        disabled={deletingId === recording.id}
+                        className="p-2 text-gray-400 hover:text-red-500 disabled:opacity-50"
+                        title="削除"
+                      >
+                        {deletingId === recording.id ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Trash2 className="h-4 w-4" />
+                        )}
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -676,6 +712,18 @@ export default function RecordingsPage() {
                               )}
                             </button>
                           )}
+                          <button
+                            onClick={() => handleDelete(recording.id, recording.title)}
+                            disabled={deletingId === recording.id}
+                            className="p-2 text-gray-400 hover:text-red-500 hover:bg-gray-100 rounded-lg disabled:opacity-50"
+                            title="削除"
+                          >
+                            {deletingId === recording.id ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Trash2 className="h-4 w-4" />
+                            )}
+                          </button>
                         </div>
                       </td>
                     </tr>

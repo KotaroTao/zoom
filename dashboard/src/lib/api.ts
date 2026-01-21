@@ -498,4 +498,13 @@ export const api = {
       `/recordings/${recordingId}/reprocess`,
       { method: 'POST' }
     ),
+
+  /**
+   * 録画を削除
+   */
+  deleteRecording: (recordingId: string) =>
+    fetchApi<{ success: boolean; message: string }>(
+      `/recordings?id=${recordingId}`,
+      { method: 'DELETE' }
+    ),
 };
