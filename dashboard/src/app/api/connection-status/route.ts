@@ -51,14 +51,14 @@ export async function GET() {
       }
 
       // YouTube/Google
-      if (settings.googleClientId && settings.googleClientSecret && settings.googleRefreshToken) {
+      if (settings.googleClientId && settings.googleClientSecret && settings.googleSpreadsheetId) {
         status.youtube.configured = true;
         status.youtube.connected = true;
         status.youtube.message = '接続済み';
       } else if (settings.googleClientId && settings.googleClientSecret) {
         status.youtube.configured = true;
         status.youtube.connected = false;
-        status.youtube.message = 'OAuth認証が必要です';
+        status.youtube.message = 'Spreadsheet IDが必要です';
       }
 
       // OpenAI
