@@ -433,12 +433,16 @@ export default function RecordingsPage() {
                   {filteredRecordings.map((recording) => (
                     <tr key={recording.id} className="hover:bg-gray-50">
                       <td className="px-4 py-4">
-                        <div className="flex items-center">
+                        <button
+                          onClick={() => handleEditOpen(recording)}
+                          className="flex items-center text-left hover:bg-gray-100 rounded-lg p-1 -m-1 transition-colors"
+                          title="クリックして編集"
+                        >
                           <Play className="h-4 w-4 text-gray-400 mr-2 flex-shrink-0" />
-                          <span className="text-sm font-medium text-gray-900 truncate max-w-xs">
+                          <span className="text-sm font-medium text-gray-900 truncate max-w-xs hover:text-primary-600">
                             {recording.title}
                           </span>
-                        </div>
+                        </button>
                       </td>
                       <td className="px-4 py-4">
                         {recording.clientName ? (
@@ -449,7 +453,13 @@ export default function RecordingsPage() {
                             {recording.clientName}
                           </Link>
                         ) : (
-                          <span className="text-sm text-gray-400">-</span>
+                          <button
+                            onClick={() => handleEditOpen(recording)}
+                            className="text-sm text-gray-400 hover:text-primary-600 hover:underline"
+                            title="クリックしてクライアントを設定"
+                          >
+                            未設定
+                          </button>
                         )}
                       </td>
                       <td className="px-4 py-4 text-sm text-gray-500">
