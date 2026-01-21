@@ -138,6 +138,29 @@ export interface QueueStatus {
   failed: number;
 }
 
+export interface DashboardData {
+  actionItems: {
+    failed: Recording[];
+    noClient: Recording[];
+    noSummary: Recording[];
+    counts: {
+      failed: number;
+      noClient: number;
+      noSummary: number;
+    };
+  };
+  todaysRecordings: Recording[];
+  weeklyClients: {
+    clientName: string;
+    recordingCount: number;
+  }[];
+  stats: {
+    totalRecordings: number;
+    completedCount: number;
+    completionRate: number;
+  };
+}
+
 export interface ProcessLog {
   id: string;
   recordingId: string;
@@ -278,6 +301,11 @@ export interface ReportGenerateResponse {
 
 // API Functions
 export const api = {
+  /**
+   * ダッシュボードデータを取得
+   */
+  getDashboard: () => fetchApi<DashboardData>('/dashboard'),
+
   /**
    * 統計情報を取得
    */
