@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { format } from 'date-fns';
 import { ja } from 'date-fns/locale';
-import { Play, ExternalLink, FileText, Loader2 } from 'lucide-react';
+import { Play, ExternalLink, FileText, Loader2, X, Youtube } from 'lucide-react';
 import { StatusBadge } from './StatusBadge';
 import { api, Recording } from '@/lib/api';
 
@@ -12,6 +12,7 @@ export function RecentRecordings() {
   const [recordings, setRecordings] = useState<Recording[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [selectedRecording, setSelectedRecording] = useState<Recording | null>(null);
 
   useEffect(() => {
     const fetchRecordings = async () => {
@@ -140,6 +141,7 @@ export function RecentRecordings() {
                       )}
                       {recording.summary && (
                         <button
+                          onClick={() => setSelectedRecording(recording)}
                           className="p-1 text-gray-400 hover:text-primary-600"
                           title="要約を表示"
                         >
@@ -152,6 +154,55 @@ export function RecentRecordings() {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* 要約モーダル */}
+      {selectedRecording && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[80vh] flex flex-col">
+            <div className="flex items-center justify-between p-4 border-b">
+              <h3 className="text-lg font-semibold text-gray-900">
+                {selectedRecording.title}
+              </h3>
+              <button
+                onClick={() => setSelectedRecording(null)}
+                className="p-1 text-gray-400 hover:text-gray-600 rounded"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="p-4 overflow-y-auto flex-1">
+              <div className="text-sm text-gray-500 mb-3">
+                {format(new Date(selectedRecording.meetingDate), 'yyyy年M月d日 HH:mm', { locale: ja })}
+                {selectedRecording.clientName && ` • ${selectedRecording.clientName}`}
+              </div>
+              <div className="prose prose-sm max-w-none">
+                <pre className="whitespace-pre-wrap font-sans text-gray-700 bg-gray-50 p-4 rounded-lg">
+                  {selectedRecording.summary}
+                </pre>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 p-4 border-t">
+              {selectedRecording.youtubeUrl && (
+                <a
+                  href={selectedRecording.youtubeUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-4 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg flex items-center gap-1"
+                >
+                  <Youtube className="h-4 w-4" />
+                  YouTube
+                </a>
+              )}
+              <button
+                onClick={() => setSelectedRecording(null)}
+                className="px-4 py-2 text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg"
+              >
+                閉じる
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
