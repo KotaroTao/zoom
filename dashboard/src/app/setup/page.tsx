@@ -302,7 +302,7 @@ export default function SetupPage() {
           title: 'スコープとWebhookを設定',
           description: '録画アクセス権限とWebhook通知を設定',
           instructions: [
-            '「Scopes」タブで以下を追加: cloud_recording:read:list_user_recordings, cloud_recording:read:recording, user:read:user',
+            '「Scopes」タブで以下を追加: cloud_recording:read:list_user_recordings:admin, cloud_recording:read:recording:admin, user:read:user:admin',
             '「Feature」→「Event Subscriptions」をオンにして下記URLを設定',
             '「Recording」→「All Recordings have completed」を選択',
             '「Secret Token」をコピーしてフォームに入力',
