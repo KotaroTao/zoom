@@ -183,6 +183,7 @@ model Client {
   name           String   // クライアント名
   description    String?
   color          String?  // ダッシュボード表示用カラー
+  zoomUrl        String?  // このZoom URLのミーティングを自動割当
   isActive       Boolean  @default(true)
 
   createdAt      DateTime @default(now())

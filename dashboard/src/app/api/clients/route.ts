@@ -11,6 +11,7 @@ interface ClientInfo {
   name: string | null;
   description?: string | null;
   color?: string | null;
+  zoomUrl?: string | null;
   isActive?: boolean;
   recordingCount: number;
   totalDuration: number;
@@ -72,6 +73,7 @@ export async function GET() {
       name: string;
       description: string | null;
       color: string | null;
+      zoomUrl: string | null;
       isActive: boolean;
     }) => {
       const stats = statsMap.get(client.name);
@@ -81,6 +83,7 @@ export async function GET() {
         name: client.name,
         description: client.description,
         color: client.color,
+        zoomUrl: client.zoomUrl,
         isActive: client.isActive,
         recordingCount: stats?.recordingCount || 0,
         totalDuration: stats?.totalDuration || 0,
@@ -121,7 +124,7 @@ export async function POST(request: NextRequest) {
   try {
     const { organizationId } = auth;
     const body = await request.json();
-    const { name, description, color } = body;
+    const { name, description, color, zoomUrl } = body;
 
     if (!name || typeof name !== 'string' || name.trim() === '') {
       return NextResponse.json(
@@ -153,6 +156,7 @@ export async function POST(request: NextRequest) {
         name: name.trim(),
         description: description || null,
         color: color || null,
+        zoomUrl: zoomUrl || null,
       },
     });
 
@@ -176,7 +180,7 @@ export async function PUT(request: NextRequest) {
   try {
     const { organizationId } = auth;
     const body = await request.json();
-    const { id, name, description, color, isActive } = body;
+    const { id, name, description, color, zoomUrl, isActive } = body;
 
     if (!id) {
       return NextResponse.json(
@@ -203,6 +207,7 @@ export async function PUT(request: NextRequest) {
         ...(name !== undefined && { name: name.trim() }),
         ...(description !== undefined && { description }),
         ...(color !== undefined && { color }),
+        ...(zoomUrl !== undefined && { zoomUrl: zoomUrl || null }),
         ...(isActive !== undefined && { isActive }),
       },
     });

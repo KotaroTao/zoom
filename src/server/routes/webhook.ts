@@ -5,7 +5,54 @@ import { getZoomCredentials } from '../../services/credentials/index.js';
 import { logger, webhookLogger } from '../../utils/logger.js';
 import { extractClientName } from '../../utils/clientParser.js';
 import { addProcessingJob } from '../../queue/worker.js';
+import { prisma } from '../../utils/db.js';
 import type { ZoomWebhookPayload, ZoomRecordingFile } from '../../types/index.js';
+
+/**
+ * Zoom URLからミーティングIDを抽出
+ */
+function extractMeetingIdFromUrl(url: string): string | null {
+  if (!url) return null;
+  // https://us02web.zoom.us/j/1234567890 → 1234567890
+  // https://zoom.us/j/1234567890?pwd=xxx → 1234567890
+  const match = url.match(/\/j\/(\d+)/);
+  return match ? match[1] : null;
+}
+
+/**
+ * Zoom URLでクライアントを検索
+ */
+async function findClientByZoomUrl(zoomUrl: string): Promise<string | null> {
+  if (!zoomUrl) return null;
+
+  const meetingId = extractMeetingIdFromUrl(zoomUrl);
+  if (!meetingId) return null;
+
+  // 全組織からクライアントを検索（zoomUrlにミーティングIDが含まれているもの）
+  const clients = await prisma.client.findMany({
+    where: {
+      zoomUrl: { not: null },
+      isActive: true,
+    },
+    select: {
+      name: true,
+      zoomUrl: true,
+    },
+  });
+
+  // ミーティングIDが一致するクライアントを探す
+  for (const client of clients) {
+    if (client.zoomUrl) {
+      const clientMeetingId = extractMeetingIdFromUrl(client.zoomUrl);
+      if (clientMeetingId === meetingId) {
+        logger.info('Zoom URLからクライアントを特定', { zoomUrl, clientName: client.name });
+        return client.name;
+      }
+    }
+  }
+
+  return null;
+}
 
 export const webhookRouter = Router();
 
@@ -78,9 +125,15 @@ async function handleRecordingCompleted(payload: ZoomWebhookPayload): Promise<vo
   const { object } = payload.payload;
   const meetingId = object.uuid;
   const title = object.topic;
-  const clientName = extractClientName(title);
+  const zoomUrl = object.share_url;
 
   webhookLogger.received('recording.completed', meetingId);
+
+  // クライアント名を決定：1. Zoom URLから検索、2. タイトルから抽出
+  let clientName = await findClientByZoomUrl(zoomUrl);
+  if (!clientName) {
+    clientName = extractClientName(title);
+  }
 
   // MP4ファイルを探す（メインの録画ファイル）
   const mp4File = object.recording_files.find(
@@ -102,7 +155,7 @@ async function handleRecordingCompleted(payload: ZoomWebhookPayload): Promise<vo
     hostEmail: object.host_email,
     duration: object.duration,
     meetingDate: new Date(object.start_time).toISOString(),
-    zoomUrl: object.share_url,
+    zoomUrl,
     downloadUrl: mp4File.download_url,
     clientName,
   });
@@ -111,6 +164,7 @@ async function handleRecordingCompleted(payload: ZoomWebhookPayload): Promise<vo
     meetingId,
     title,
     clientName,
+    zoomUrl,
     duration: object.duration,
   });
 }

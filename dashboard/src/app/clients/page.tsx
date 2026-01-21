@@ -39,6 +39,7 @@ export default function ClientsPage() {
     name: '',
     description: '',
     color: '#3B82F6',
+    zoomUrl: '',
   });
   const [saving, setSaving] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
@@ -67,10 +68,11 @@ export default function ClientsPage() {
         name: client.name,
         description: client.description || '',
         color: client.color || '#3B82F6',
+        zoomUrl: client.zoomUrl || '',
       });
     } else {
       setEditingClient(null);
-      setFormData({ name: '', description: '', color: '#3B82F6' });
+      setFormData({ name: '', description: '', color: '#3B82F6', zoomUrl: '' });
     }
     setShowModal(true);
   };
@@ -78,7 +80,7 @@ export default function ClientsPage() {
   const handleCloseModal = () => {
     setShowModal(false);
     setEditingClient(null);
-    setFormData({ name: '', description: '', color: '#3B82F6' });
+    setFormData({ name: '', description: '', color: '#3B82F6', zoomUrl: '' });
   };
 
   const handleSave = async () => {
@@ -97,12 +99,14 @@ export default function ClientsPage() {
           name: formData.name,
           description: formData.description || undefined,
           color: formData.color,
+          zoomUrl: formData.zoomUrl || undefined,
         });
       } else {
         await api.createClient({
           name: formData.name,
           description: formData.description || undefined,
           color: formData.color,
+          zoomUrl: formData.zoomUrl || undefined,
         });
       }
       handleCloseModal();
@@ -367,6 +371,21 @@ export default function ClientsPage() {
                   placeholder="プロジェクト名や担当者など"
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                 />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Zoom URL（任意）
+                </label>
+                <input
+                  type="text"
+                  value={formData.zoomUrl}
+                  onChange={(e) => setFormData({ ...formData, zoomUrl: e.target.value })}
+                  placeholder="https://us02web.zoom.us/j/1234567890"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  このURLで行われたミーティングは自動的にこのクライアントに割り当てられます
+                </p>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
