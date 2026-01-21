@@ -23,7 +23,7 @@ import {
 } from 'lucide-react';
 import { StatusBadge } from '@/components/StatusBadge';
 import { DashboardLayout } from '@/components/DashboardLayout';
-import { api, Recording } from '@/lib/api';
+import { api, Recording, Client } from '@/lib/api';
 
 // 同期ステータスアイコンコンポーネント
 function SyncStatusIcon({
@@ -78,6 +78,7 @@ export default function RecordingsPage() {
   const [editingRecording, setEditingRecording] = useState<Recording | null>(null);
   const [editForm, setEditForm] = useState({ title: '', clientName: '' });
   const [saving, setSaving] = useState(false);
+  const [clients, setClients] = useState<Client[]>([]);
   const limit = 20;
 
   const fetchRecordings = async () => {
@@ -103,12 +104,20 @@ export default function RecordingsPage() {
     fetchRecordings();
   }, [page, statusFilter]);
 
-  const handleEditOpen = (recording: Recording) => {
+  const handleEditOpen = async (recording: Recording) => {
     setEditingRecording(recording);
     setEditForm({
       title: recording.title,
       clientName: recording.clientName || '',
     });
+    // クライアント一覧を取得
+    try {
+      const data = await api.getClients();
+      // 登録済みクライアントのみ（idがあるもの）をフィルタ
+      setClients(data.clients.filter((c: Client) => c.id));
+    } catch (err) {
+      console.error('Failed to fetch clients:', err);
+    }
   };
 
   const handleEditSave = async () => {
@@ -454,18 +463,20 @@ export default function RecordingsPage() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  クライアント名
+                  クライアント
                 </label>
-                <input
-                  type="text"
+                <select
                   value={editForm.clientName}
                   onChange={(e) => setEditForm({ ...editForm, clientName: e.target.value })}
-                  placeholder="クライアント名を入力"
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                />
-                <p className="text-xs text-gray-500 mt-1">
-                  空欄にするとクライアント未設定になります
-                </p>
+                >
+                  <option value="">未設定</option>
+                  {clients.map((client) => (
+                    <option key={client.id} value={client.name}>
+                      {client.name}
+                    </option>
+                  ))}
+                </select>
               </div>
             </div>
             <div className="flex justify-end gap-2 p-4 border-t">
