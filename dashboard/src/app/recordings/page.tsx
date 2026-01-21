@@ -631,24 +631,36 @@ export default function RecordingsPage() {
                 </pre>
               </div>
             </div>
-            <div className="flex justify-end gap-2 p-4 border-t">
-              {selectedRecording.youtubeUrl && (
-                <a
-                  href={selectedRecording.youtubeUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="px-4 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg flex items-center gap-1"
-                >
-                  <Youtube className="h-4 w-4" />
-                  YouTube
-                </a>
-              )}
+            <div className="flex justify-between items-center p-4 border-t">
               <button
-                onClick={() => setSelectedRecording(null)}
-                className="px-4 py-2 text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg"
+                onClick={() => {
+                  setSelectedRecording(null);
+                  handleOpenReportModal(selectedRecording);
+                }}
+                className="px-4 py-2 text-sm text-green-600 hover:bg-green-50 rounded-lg flex items-center gap-1"
               >
-                閉じる
+                <FileOutput className="h-4 w-4" />
+                クライアント報告書を生成
               </button>
+              <div className="flex gap-2">
+                {selectedRecording.youtubeUrl && (
+                  <a
+                    href={selectedRecording.youtubeUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-4 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg flex items-center gap-1"
+                  >
+                    <Youtube className="h-4 w-4" />
+                    YouTube
+                  </a>
+                )}
+                <button
+                  onClick={() => setSelectedRecording(null)}
+                  className="px-4 py-2 text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg"
+                >
+                  閉じる
+                </button>
+              </div>
             </div>
           </div>
         </div>
