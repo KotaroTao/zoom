@@ -1035,7 +1035,6 @@ async function processReprocessing(id: string, recording: { zoomMeetingUuid: str
     }
   }
 }
-});
 
 /**
  * 録画の報告書を取得
