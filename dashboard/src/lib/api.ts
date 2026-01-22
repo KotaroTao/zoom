@@ -57,6 +57,7 @@ export interface Recording {
   summary: string | null;
   detailedSummary: string | null;
   detailedSummaryStatus: string | null;  // GENERATING, COMPLETED, FAILED
+  reportSentAt: string | null;  // 報告書送付日時
   youtubeSuccess: boolean | null;
   sheetsSuccess: boolean | null;
   notionSuccess: boolean | null;
@@ -553,5 +554,27 @@ export const api = {
   getDetailedSummary: (recordingId: string) =>
     fetchApi<{ success: boolean; summary: string | null; status?: string }>(
       `/recordings/${recordingId}/detailed-summary`
+    ),
+
+  // =============================================
+  // 報告書送付ステータス API
+  // =============================================
+
+  /**
+   * 報告書を送付済みにする
+   */
+  markReportSent: (recordingId: string) =>
+    fetchApi<{ success: boolean; message: string; reportSentAt: string }>(
+      `/recordings/${recordingId}/report-sent`,
+      { method: 'POST' }
+    ),
+
+  /**
+   * 報告書送付ステータスをクリア
+   */
+  clearReportSent: (recordingId: string) =>
+    fetchApi<{ success: boolean; message: string }>(
+      `/recordings/${recordingId}/report-sent`,
+      { method: 'DELETE' }
     ),
 };

@@ -143,6 +143,7 @@ model Recording {
   clientReport           String?    // 生成された報告書
   clientReportTemplateId String?    // 使用したテンプレートID
   clientReportGeneratedAt DateTime? // 生成日時
+  reportSentAt           DateTime?  // 報告書送付日時
 
   // 外部連携
   sheetRowNumber  Int?     // Google Sheets の行番号

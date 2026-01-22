@@ -1241,3 +1241,68 @@ async function generateDetailedSummaryBackground(
     console.error('Detailed summary background error:', error);
   }
 }
+
+// =============================================
+// 報告書送付ステータス API
+// =============================================
+
+/**
+ * 報告書を送付済みにする
+ */
+apiRouter.post('/recordings/:id/report-sent', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    const recording = await prisma.recording.findUnique({
+      where: { id },
+    });
+
+    if (!recording) {
+      return res.status(404).json({ error: '録画が見つかりません' });
+    }
+
+    await prisma.recording.update({
+      where: { id },
+      data: { reportSentAt: new Date() },
+    });
+
+    res.json({
+      success: true,
+      message: '報告書を送付済みにしました',
+      reportSentAt: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.error('Report sent error:', error);
+    res.status(500).json({ error: '送付ステータスの更新に失敗しました' });
+  }
+});
+
+/**
+ * 報告書送付ステータスをクリア
+ */
+apiRouter.delete('/recordings/:id/report-sent', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    const recording = await prisma.recording.findUnique({
+      where: { id },
+    });
+
+    if (!recording) {
+      return res.status(404).json({ error: '録画が見つかりません' });
+    }
+
+    await prisma.recording.update({
+      where: { id },
+      data: { reportSentAt: null },
+    });
+
+    res.json({
+      success: true,
+      message: '送付ステータスをクリアしました',
+    });
+  } catch (error) {
+    console.error('Report sent clear error:', error);
+    res.status(500).json({ error: '送付ステータスのクリアに失敗しました' });
+  }
+});

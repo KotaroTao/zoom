@@ -29,6 +29,7 @@ import {
   Mail,
   RefreshCw,
   Trash2,
+  Send,
 } from 'lucide-react';
 import { StatusBadge } from '@/components/StatusBadge';
 import { DashboardLayout } from '@/components/DashboardLayout';
@@ -109,6 +110,38 @@ function SyncStatusIcon({
       <Icon className={`h-4 w-4 ${getStatusColor()}`} />
       {getStatusIcon()}
     </div>
+  );
+}
+
+// 報告書送付ステータスアイコンコンポーネント
+function ReportSentIcon({
+  reportSentAt,
+  onClick,
+}: {
+  reportSentAt: string | null;
+  onClick?: () => void;
+}) {
+  const isSent = !!reportSentAt;
+
+  const getTooltip = () => {
+    if (!reportSentAt) return '報告書: 未送付（クリックで送付済みにする）';
+    const date = new Date(reportSentAt);
+    return `報告書: 送付済み（${format(date, 'M/d HH:mm', { locale: ja })}）クリックで取り消し`;
+  };
+
+  return (
+    <button
+      onClick={onClick}
+      className="relative inline-block hover:opacity-70 transition-opacity"
+      title={getTooltip()}
+    >
+      <Send className={`h-4 w-4 ${isSent ? 'text-blue-500' : 'text-gray-300'}`} />
+      {isSent ? (
+        <CheckCircle className="h-3 w-3 absolute -bottom-0.5 -right-0.5 text-green-500 bg-white rounded-full" />
+      ) : (
+        <MinusCircle className="h-3 w-3 absolute -bottom-0.5 -right-0.5 text-gray-400 bg-white rounded-full" />
+      )}
+    </button>
   );
 }
 
@@ -360,6 +393,33 @@ export default function RecordingsPage() {
     }
   };
 
+  // 報告書送付ステータスを切り替え
+  const handleToggleReportSent = async (recordingId: string, currentSentAt: string | null) => {
+    try {
+      if (currentSentAt) {
+        // 送付済み → 未送付
+        await api.clearReportSent(recordingId);
+      } else {
+        // 未送付 → 送付済み
+        await api.markReportSent(recordingId);
+      }
+      await fetchRecordings();
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : 'ステータスの更新に失敗しました';
+      setError(errorMessage);
+    }
+  };
+
+  // 連絡先クリック時に報告書送付済みにする
+  const handleContactClick = async (recordingId: string) => {
+    try {
+      await api.markReportSent(recordingId);
+      // 更新はバックグラウンドで行う（モーダルを閉じた後に反映される）
+    } catch (err) {
+      console.error('Failed to mark report as sent:', err);
+    }
+  };
+
   // 詳細要約を生成
   const handleGenerateDetailedSummary = async () => {
     if (!selectedRecording) return;
@@ -541,6 +601,10 @@ export default function RecordingsPage() {
                         label="Notion"
                         color="text-gray-700"
                       />
+                      <ReportSentIcon
+                        reportSentAt={recording.reportSentAt}
+                        onClick={() => handleToggleReportSent(recording.id, recording.reportSentAt)}
+                      />
                     </div>
                     <div className="flex items-center gap-1">
                       <button
@@ -695,6 +759,10 @@ export default function RecordingsPage() {
                             icon={BookOpen}
                             label="Notion"
                             color="text-gray-700"
+                          />
+                          <ReportSentIcon
+                            reportSentAt={recording.reportSentAt}
+                            onClick={() => handleToggleReportSent(recording.id, recording.reportSentAt)}
                           />
                         </div>
                       </td>
@@ -1276,13 +1344,14 @@ export default function RecordingsPage() {
             </div>
             <div className="flex justify-between p-4 border-t">
               <div className="flex gap-2">
-                {generatedReport && reportClientContacts.length > 0 && (
+                {generatedReport && reportClientContacts.length > 0 && reportRecording && (
                   reportClientContacts.map((contact, index) => (
                     <a
                       key={index}
                       href={contact.url}
                       target="_blank"
                       rel="noopener noreferrer"
+                      onClick={() => handleContactClick(reportRecording.id)}
                       className="px-3 py-2 text-sm bg-green-600 hover:bg-green-700 text-white rounded-lg flex items-center gap-2"
                     >
                       {getContactIcon(contact.type)}
