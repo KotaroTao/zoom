@@ -1006,11 +1006,12 @@ async function processReprocessing(id: string, recording: { zoomMeetingUuid: str
       summary = summaryResult.summary;
     }
 
-    // 完了
+    // 完了 - 要約がない場合はFAILEDにする
+    const finalStatus = summary ? 'COMPLETED' : 'FAILED';
     await prisma.recording.update({
       where: { id },
       data: {
-        status: 'COMPLETED',
+        status: finalStatus,
         summary,
         summarizedAt: summary ? new Date() : undefined,
         errorMessage: summary ? null : '要約の生成に失敗しました',
