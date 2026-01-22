@@ -1,9 +1,10 @@
 'use client';
 
 import { ReactNode } from 'react';
+import Link from 'next/link';
 import { useSession, signOut } from 'next-auth/react';
 import { Sidebar } from './Sidebar';
-import { LogOut, User, Loader2 } from 'lucide-react';
+import { LogOut, User, Loader2, Building2, AlertCircle } from 'lucide-react';
 
 interface DashboardLayoutProps {
   children: ReactNode;
@@ -20,13 +21,33 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
     );
   }
 
+  const hasOrganization = !!session?.user?.organizationId;
+
   return (
     <div className="flex h-screen">
       <Sidebar />
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* ヘッダー */}
         <header className="bg-white border-b border-gray-200 px-6 py-3">
-          <div className="flex items-center justify-end">
+          <div className="flex items-center justify-between">
+            {/* 組織情報 */}
+            <div className="flex items-center text-sm">
+              {hasOrganization ? (
+                <div className="flex items-center text-gray-600">
+                  <Building2 className="h-4 w-4 mr-1" />
+                  <span>{session?.user?.organizationName || '組織'}</span>
+                </div>
+              ) : (
+                <Link
+                  href="/zoom/onboarding"
+                  className="flex items-center text-amber-600 hover:text-amber-700"
+                >
+                  <Building2 className="h-4 w-4 mr-1" />
+                  <span>組織未所属</span>
+                </Link>
+              )}
+            </div>
+            {/* ユーザー情報 */}
             <div className="flex items-center space-x-4">
               <div className="flex items-center text-sm text-gray-600">
                 <User className="h-4 w-4 mr-1" />
@@ -42,6 +63,27 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
             </div>
           </div>
         </header>
+
+        {/* 組織未所属の場合の案内バナー */}
+        {!hasOrganization && (
+          <div className="bg-amber-50 border-b border-amber-200 px-6 py-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center text-amber-800">
+                <AlertCircle className="h-5 w-5 mr-2" />
+                <span>
+                  組織に参加すると、チームメンバーと録画一覧を共有できます。
+                </span>
+              </div>
+              <Link
+                href="/zoom/onboarding"
+                className="px-4 py-1.5 bg-amber-600 text-white text-sm font-medium rounded-lg hover:bg-amber-700 transition-colors"
+              >
+                組織を作成・参加
+              </Link>
+            </div>
+          </div>
+        )}
+
         <main className="flex-1 overflow-auto bg-gray-50">
           {children}
         </main>

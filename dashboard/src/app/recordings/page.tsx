@@ -69,6 +69,7 @@ export default function RecordingsPage() {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [noOrganization, setNoOrganization] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [page, setPage] = useState(0);
@@ -85,6 +86,7 @@ export default function RecordingsPage() {
         });
         setRecordings(data.recordings);
         setTotal(data.total);
+        setNoOrganization(!!data.message);
         setError(null);
       } catch (err) {
         console.error('Failed to fetch recordings:', err);
@@ -301,7 +303,19 @@ export default function RecordingsPage() {
             {/* 結果なし */}
             {filteredRecordings.length === 0 && (
               <div className="text-center py-12">
-                <p className="text-gray-500">該当する録画が見つかりません</p>
+                {noOrganization ? (
+                  <div>
+                    <p className="text-gray-500 mb-4">組織に参加すると録画一覧が表示されます</p>
+                    <Link
+                      href="/zoom/onboarding"
+                      className="inline-block px-4 py-2 bg-primary-600 text-white font-medium rounded-lg hover:bg-primary-700 transition-colors"
+                    >
+                      組織を作成・参加
+                    </Link>
+                  </div>
+                ) : (
+                  <p className="text-gray-500">該当する録画が見つかりません</p>
+                )}
               </div>
             )}
 

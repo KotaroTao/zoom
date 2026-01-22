@@ -15,6 +15,19 @@ export async function GET() {
   try {
     const { organizationId } = auth;
 
+    // 組織未所属の場合はすべて0を返す
+    if (!organizationId) {
+      return NextResponse.json({
+        totalRecordings: 0,
+        totalClients: 0,
+        totalDuration: 0,
+        completedCount: 0,
+        weeklyRecordings: 0,
+        completionRate: 0,
+        message: '組織に参加すると統計が表示されます',
+      });
+    }
+
     // 総録画数
     const totalRecordings = await prisma.recording.count({
       where: { organizationId },

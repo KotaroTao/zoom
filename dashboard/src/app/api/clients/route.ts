@@ -22,6 +22,14 @@ export async function GET() {
   try {
     const { organizationId } = auth;
 
+    // 組織未所属の場合は空の配列を返す
+    if (!organizationId) {
+      return NextResponse.json({
+        clients: [],
+        message: '組織に参加するとクライアント一覧が表示されます',
+      });
+    }
+
     // 録画からユニークなクライアント名を集計
     const clientStats = await prisma.recording.groupBy({
       by: ['clientName'],

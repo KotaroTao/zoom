@@ -10,13 +10,14 @@ import { prisma } from './db';
 
 export interface AuthContext {
   userId: string;
-  organizationId: string;
+  organizationId: string | null;  // nullは組織未所属を意味する
   role: string;
 }
 
 /**
  * 認証済みコンテキストを取得
- * 未認証または組織未所属の場合はnullを返す
+ * 未認証の場合はnullを返す
+ * 組織未所属の場合はorganizationId=nullのAuthContextを返す
  */
 export async function getAuthContext(): Promise<AuthContext | null> {
   const session = await getServerSession(authOptions);
@@ -52,7 +53,12 @@ export async function getAuthContext(): Promise<AuthContext | null> {
     console.error('[API-AUTH] Failed to fetch membership from DB:', error);
   }
 
-  return null;
+  // 組織未所属でも認証コンテキストを返す
+  return {
+    userId: session.user.id,
+    organizationId: null,
+    role: 'member',
+  };
 }
 
 /**

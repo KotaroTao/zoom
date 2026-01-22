@@ -1,5 +1,8 @@
 /**
  * 録画一覧API（テナント分離対応）
+ *
+ * 組織に所属しているユーザーは、その組織の全録画を閲覧可能
+ * 組織未所属のユーザーは空の録画リストを返す
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -20,6 +23,17 @@ export async function GET(request: NextRequest) {
     const offset = parseInt(searchParams.get('offset') || '0');
     const clientName = searchParams.get('client');
     const status = searchParams.get('status');
+
+    // 組織未所属の場合は空の配列を返す
+    if (!organizationId) {
+      return NextResponse.json({
+        recordings: [],
+        total: 0,
+        limit,
+        offset,
+        message: '組織に参加すると録画一覧が表示されます',
+      });
+    }
 
     const where: Record<string, unknown> = { organizationId };
     if (clientName) where.clientName = clientName;

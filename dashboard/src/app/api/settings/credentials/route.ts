@@ -24,6 +24,14 @@ export async function PUT(request: NextRequest) {
     return unauthorizedResponse();
   }
 
+  // 組織未所属の場合は設定変更不可
+  if (!auth.organizationId) {
+    return NextResponse.json(
+      { error: '組織に参加するとAPI認証情報を設定できます', noOrganization: true },
+      { status: 403 }
+    );
+  }
+
   // 管理者権限をチェック
   if (!isAdmin(auth.role)) {
     return NextResponse.json(

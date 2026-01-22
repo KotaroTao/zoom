@@ -39,6 +39,7 @@ export interface Stats {
   completedCount: number;
   weeklyRecordings: number;
   completionRate: number;
+  message?: string;  // 組織未所属時などのメッセージ
 }
 
 export interface Recording {
@@ -71,6 +72,7 @@ export interface RecordingsResponse {
   total: number;
   limit: number;
   offset: number;
+  message?: string;  // 組織未所属時などのメッセージ
 }
 
 export interface Client {

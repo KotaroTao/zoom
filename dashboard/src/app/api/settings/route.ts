@@ -27,6 +27,14 @@ export async function GET() {
   try {
     const { organizationId } = auth;
 
+    // 組織未所属の場合は設定なしを返す
+    if (!organizationId) {
+      return NextResponse.json(
+        { error: '組織に参加すると設定が利用できます', noOrganization: true },
+        { status: 403 }
+      );
+    }
+
     // 組織の設定を取得（存在しない場合は作成）
     let settings = await prisma.settings.findUnique({
       where: { organizationId },
@@ -68,6 +76,14 @@ export async function PUT(request: NextRequest) {
   const auth = await getAuthContext();
   if (!auth) {
     return unauthorizedResponse();
+  }
+
+  // 組織未所属の場合は設定変更不可
+  if (!auth.organizationId) {
+    return NextResponse.json(
+      { error: '組織に参加すると設定が変更できます', noOrganization: true },
+      { status: 403 }
+    );
   }
 
   // 管理者権限をチェック
