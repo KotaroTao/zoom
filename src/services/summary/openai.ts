@@ -247,7 +247,7 @@ export async function summarizeLongText(
   transcript: string,
   options: SummaryOptions = {}
 ): Promise<SummaryResult> {
-  const chunkSize = 50000; // 約12,500トークン
+  const chunkSize = 20000; // 約5,000トークン（30,000 TPM制限対策）
 
   if (transcript.length <= chunkSize) {
     return generateSummary(transcript, options);
@@ -266,10 +266,15 @@ export async function summarizeLongText(
 
   logger.debug('チャンク数', { count: chunks.length });
 
-  // 各チャンクを要約
+  // 各チャンクを要約（レート制限対策で間隔を空ける）
   const chunkSummaries: string[] = [];
   for (let i = 0; i < chunks.length; i++) {
     logger.debug(`チャンク ${i + 1}/${chunks.length} を処理中`);
+
+    // 2番目以降のチャンクは5秒待機（レート制限対策）
+    if (i > 0) {
+      await new Promise(resolve => setTimeout(resolve, 5000));
+    }
 
     const result = await generateSummary(chunks[i], {
       ...options,

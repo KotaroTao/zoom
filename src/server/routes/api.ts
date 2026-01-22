@@ -997,7 +997,8 @@ async function processReprocessing(id: string, recording: { zoomMeetingUuid: str
       meetingTitle: recording.title,
       style: 'detailed' as const,
     };
-    const summaryResult = transcript.length > 40000
+    // 20,000文字以上は分割要約（30,000 TPM制限対策）
+    const summaryResult = transcript.length > 20000
       ? await summarizeLongText(transcript, summaryOptions)
       : await generateSummary(transcript, summaryOptions);
 
