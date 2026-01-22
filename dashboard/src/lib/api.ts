@@ -55,6 +55,8 @@ export interface Recording {
   hostEmail: string | null;
   transcript: string | null;
   summary: string | null;
+  detailedSummary: string | null;
+  detailedSummaryStatus: string | null;  // GENERATING, COMPLETED, FAILED
   youtubeSuccess: boolean | null;
   sheetsSuccess: boolean | null;
   notionSuccess: boolean | null;

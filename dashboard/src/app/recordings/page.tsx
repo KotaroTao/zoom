@@ -143,6 +143,7 @@ export default function RecordingsPage() {
 
   // 詳細要約状態
   const [detailedSummary, setDetailedSummary] = useState<string | null>(null);
+  const [detailedSummaryStatus, setDetailedSummaryStatus] = useState<string | null>(null);
   const [generatingDetailed, setGeneratingDetailed] = useState(false);
   const [loadingDetailed, setLoadingDetailed] = useState(false);
 
@@ -818,6 +819,8 @@ export default function RecordingsPage() {
                   setSelectedRecording(null);
                   setModalTab('summary');
                   setDetailedSummary(null);
+                  setDetailedSummaryStatus(null);
+                  setGeneratingDetailed(false);
                 }}
                 className="p-1 text-gray-400 hover:text-gray-600 rounded flex-shrink-0"
               >
@@ -854,8 +857,36 @@ export default function RecordingsPage() {
                     setLoadingDetailed(true);
                     try {
                       const result = await api.getDetailedSummary(selectedRecording.id);
+                      setDetailedSummaryStatus(result.status || null);
                       if (result.success && result.summary) {
                         setDetailedSummary(result.summary);
+                      } else if (result.status === 'GENERATING') {
+                        setGeneratingDetailed(true);
+                        // ポーリングで結果を取得
+                        const recordingId = selectedRecording.id;
+                        const pollInterval = setInterval(async () => {
+                          try {
+                            const pollResult = await api.getDetailedSummary(recordingId);
+                            if (pollResult.success && pollResult.summary) {
+                              setDetailedSummary(pollResult.summary);
+                              setDetailedSummaryStatus('COMPLETED');
+                              setGeneratingDetailed(false);
+                              clearInterval(pollInterval);
+                            } else if (pollResult.status === 'FAILED') {
+                              setDetailedSummaryStatus('FAILED');
+                              setGeneratingDetailed(false);
+                              clearInterval(pollInterval);
+                            }
+                          } catch {
+                            // ignore polling errors
+                          }
+                        }, 10000); // 10秒ごとにチェック
+
+                        // 5分後にポーリング停止
+                        setTimeout(() => {
+                          clearInterval(pollInterval);
+                          setGeneratingDetailed(false);
+                        }, 300000);
                       }
                     } catch (err) {
                       console.error('Failed to fetch detailed summary:', err);
@@ -871,7 +902,7 @@ export default function RecordingsPage() {
                 }`}
               >
                 詳細要約
-                {generatingDetailed && (
+                {(generatingDetailed || detailedSummaryStatus === 'GENERATING') && (
                   <Loader2 className="h-3 w-3 animate-spin" />
                 )}
               </button>
@@ -927,13 +958,29 @@ export default function RecordingsPage() {
                       <Loader2 className="h-8 w-8 animate-spin text-purple-500" />
                       <span className="ml-2 text-gray-500">読み込み中...</span>
                     </div>
-                  ) : generatingDetailed ? (
+                  ) : generatingDetailed || detailedSummaryStatus === 'GENERATING' ? (
                     <div className="text-center py-12">
                       <Loader2 className="h-12 w-12 mx-auto text-purple-500 animate-spin mb-4" />
                       <p className="text-purple-600 font-medium">詳細要約を生成中...</p>
                       <p className="text-sm text-gray-500 mt-2">
                         処理には数分かかります。このまま待つか、後で確認してください。
                       </p>
+                    </div>
+                  ) : detailedSummaryStatus === 'FAILED' ? (
+                    <div className="text-center py-8">
+                      <XCircle className="h-12 w-12 mx-auto text-red-400 mb-4" />
+                      <p className="text-red-600 font-medium mb-2">詳細要約の生成に失敗しました</p>
+                      <p className="text-sm text-gray-500 mb-6">
+                        再度お試しください。
+                      </p>
+                      <button
+                        onClick={handleGenerateDetailedSummary}
+                        disabled={!selectedRecording.transcript}
+                        className="px-6 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-lg disabled:opacity-50 flex items-center gap-2 mx-auto"
+                      >
+                        <RefreshCw className="h-4 w-4" />
+                        再生成
+                      </button>
                     </div>
                   ) : detailedSummary ? (
                     <div className="prose prose-sm max-w-none">
@@ -987,6 +1034,9 @@ export default function RecordingsPage() {
                   onClick={() => {
                     setSelectedRecording(null);
                     setModalTab('summary');
+                    setDetailedSummary(null);
+                    setDetailedSummaryStatus(null);
+                    setGeneratingDetailed(false);
                     handleOpenReportModal(selectedRecording);
                   }}
                   className="px-3 py-2 text-sm text-green-600 hover:bg-green-50 rounded-lg flex items-center justify-center gap-1"
@@ -1012,6 +1062,8 @@ export default function RecordingsPage() {
                     setSelectedRecording(null);
                     setModalTab('summary');
                     setDetailedSummary(null);
+                    setDetailedSummaryStatus(null);
+                    setGeneratingDetailed(false);
                   }}
                   className="px-4 py-2 text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg"
                 >

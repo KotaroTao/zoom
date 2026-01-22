@@ -137,6 +137,7 @@ model Recording {
   transcript      String?  // 文字起こし全文
   summary         String?  // 要約テキスト
   detailedSummary String?  // 詳細要約（長文版）
+  detailedSummaryStatus String?  // 詳細要約ステータス: GENERATING, COMPLETED, FAILED
 
   // クライアント向け報告書
   clientReport           String?    // 生成された報告書

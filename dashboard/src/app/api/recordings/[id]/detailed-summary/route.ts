@@ -82,6 +82,7 @@ export async function GET(
       where: { id, organizationId },
       select: {
         detailedSummary: true,
+        detailedSummaryStatus: true,
       },
     });
 
@@ -90,6 +91,24 @@ export async function GET(
         { error: '録画が見つかりません' },
         { status: 404 }
       );
+    }
+
+    // 生成中の場合
+    if (recording.detailedSummaryStatus === 'GENERATING') {
+      return NextResponse.json({
+        success: false,
+        summary: null,
+        status: 'GENERATING',
+      });
+    }
+
+    // 失敗した場合
+    if (recording.detailedSummaryStatus === 'FAILED') {
+      return NextResponse.json({
+        success: false,
+        summary: null,
+        status: 'FAILED',
+      });
     }
 
     if (!recording.detailedSummary) {
@@ -103,6 +122,7 @@ export async function GET(
     return NextResponse.json({
       success: true,
       summary: recording.detailedSummary,
+      status: 'COMPLETED',
     });
   } catch (error) {
     console.error('Detailed summary GET API error:', error);

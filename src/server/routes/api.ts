@@ -1088,6 +1088,7 @@ apiRouter.post('/recordings/:id/detailed-summary', async (req: Request, res: Res
         clientName: true,
         transcript: true,
         detailedSummary: true,
+        detailedSummaryStatus: true,
       },
     });
 
@@ -1104,15 +1105,31 @@ apiRouter.post('/recordings/:id/detailed-summary', async (req: Request, res: Res
       return res.json({
         success: true,
         summary: recording.detailedSummary,
+        status: 'COMPLETED',
         cached: true,
       });
     }
+
+    // 既に生成中の場合
+    if (recording.detailedSummaryStatus === 'GENERATING') {
+      return res.json({
+        success: true,
+        message: '詳細要約を生成中です。しばらくお待ちください。',
+        status: 'GENERATING',
+      });
+    }
+
+    // ステータスをGENERATINGに設定
+    await prisma.recording.update({
+      where: { id },
+      data: { detailedSummaryStatus: 'GENERATING' },
+    });
 
     // バックグラウンドで詳細要約を生成
     res.json({
       success: true,
       message: '詳細要約の生成を開始しました。処理には数分かかる場合があります。',
-      status: 'PROCESSING',
+      status: 'GENERATING',
     });
 
     // バックグラウンド処理
@@ -1136,11 +1153,30 @@ apiRouter.get('/recordings/:id/detailed-summary', async (req: Request, res: Resp
       where: { id },
       select: {
         detailedSummary: true,
+        detailedSummaryStatus: true,
       },
     });
 
     if (!recording) {
       return res.status(404).json({ error: '録画が見つかりません' });
+    }
+
+    // 生成中の場合
+    if (recording.detailedSummaryStatus === 'GENERATING') {
+      return res.json({
+        success: false,
+        summary: null,
+        status: 'GENERATING',
+      });
+    }
+
+    // 失敗した場合
+    if (recording.detailedSummaryStatus === 'FAILED') {
+      return res.json({
+        success: false,
+        summary: null,
+        status: 'FAILED',
+      });
     }
 
     if (!recording.detailedSummary) {
@@ -1154,6 +1190,7 @@ apiRouter.get('/recordings/:id/detailed-summary', async (req: Request, res: Resp
     res.json({
       success: true,
       summary: recording.detailedSummary,
+      status: 'COMPLETED',
     });
   } catch (error) {
     console.error('Get detailed summary error:', error);
@@ -1181,13 +1218,26 @@ async function generateDetailedSummaryBackground(
         where: { id },
         data: {
           detailedSummary: result.summary,
+          detailedSummaryStatus: 'COMPLETED',
         },
       });
       console.log(`Detailed summary generated for recording ${id}`);
     } else {
+      await prisma.recording.update({
+        where: { id },
+        data: {
+          detailedSummaryStatus: 'FAILED',
+        },
+      });
       console.error(`Detailed summary generation failed for recording ${id}:`, result.error);
     }
   } catch (error) {
+    await prisma.recording.update({
+      where: { id },
+      data: {
+        detailedSummaryStatus: 'FAILED',
+      },
+    }).catch(() => {});
     console.error('Detailed summary background error:', error);
   }
 }
