@@ -1072,3 +1072,122 @@ apiRouter.get('/recordings/:id/report', async (req: Request, res: Response) => {
     res.status(500).json({ error: '報告書の取得に失敗しました' });
   }
 });
+
+/**
+ * 詳細要約を生成
+ */
+apiRouter.post('/recordings/:id/detailed-summary', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    const recording = await prisma.recording.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        title: true,
+        clientName: true,
+        transcript: true,
+        detailedSummary: true,
+      },
+    });
+
+    if (!recording) {
+      return res.status(404).json({ error: '録画が見つかりません' });
+    }
+
+    if (!recording.transcript) {
+      return res.status(400).json({ error: '文字起こしがありません。先に再処理を実行してください。' });
+    }
+
+    // 既に詳細要約がある場合は返す
+    if (recording.detailedSummary) {
+      return res.json({
+        success: true,
+        summary: recording.detailedSummary,
+        cached: true,
+      });
+    }
+
+    // バックグラウンドで詳細要約を生成
+    res.json({
+      success: true,
+      message: '詳細要約の生成を開始しました。処理には数分かかる場合があります。',
+      status: 'PROCESSING',
+    });
+
+    // バックグラウンド処理
+    generateDetailedSummaryBackground(id, recording).catch((error) => {
+      console.error('Detailed summary generation error:', error);
+    });
+  } catch (error) {
+    console.error('Detailed summary error:', error);
+    res.status(500).json({ error: '詳細要約の生成に失敗しました' });
+  }
+});
+
+/**
+ * 詳細要約の取得
+ */
+apiRouter.get('/recordings/:id/detailed-summary', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    const recording = await prisma.recording.findUnique({
+      where: { id },
+      select: {
+        detailedSummary: true,
+      },
+    });
+
+    if (!recording) {
+      return res.status(404).json({ error: '録画が見つかりません' });
+    }
+
+    if (!recording.detailedSummary) {
+      return res.json({
+        success: false,
+        summary: null,
+        status: 'NOT_GENERATED',
+      });
+    }
+
+    res.json({
+      success: true,
+      summary: recording.detailedSummary,
+    });
+  } catch (error) {
+    console.error('Get detailed summary error:', error);
+    res.status(500).json({ error: '詳細要約の取得に失敗しました' });
+  }
+});
+
+/**
+ * 詳細要約をバックグラウンドで生成
+ */
+async function generateDetailedSummaryBackground(
+  id: string,
+  recording: { transcript: string | null; title: string; clientName: string | null }
+) {
+  try {
+    const { generateComprehensiveSummary } = await import('../../services/summary/openai.js');
+
+    const result = await generateComprehensiveSummary(recording.transcript!, {
+      clientName: recording.clientName || undefined,
+      meetingTitle: recording.title,
+    });
+
+    if (result.success && result.summary) {
+      await prisma.recording.update({
+        where: { id },
+        data: {
+          detailedSummary: result.summary,
+        },
+      });
+      console.log(`Detailed summary generated for recording ${id}`);
+    } else {
+      console.error(`Detailed summary generation failed for recording ${id}:`, result.error);
+    }
+  } catch (error) {
+    console.error('Detailed summary background error:', error);
+  }
+}

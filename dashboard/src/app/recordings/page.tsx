@@ -141,6 +141,12 @@ export default function RecordingsPage() {
   const [reprocessingId, setReprocessingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
+  // 詳細要約状態
+  const [detailedSummaryRecording, setDetailedSummaryRecording] = useState<Recording | null>(null);
+  const [detailedSummary, setDetailedSummary] = useState<string | null>(null);
+  const [generatingDetailed, setGeneratingDetailed] = useState(false);
+  const [loadingDetailed, setLoadingDetailed] = useState(false);
+
   const fetchRecordings = async () => {
     setLoading(true);
     try {
@@ -348,6 +354,60 @@ export default function RecordingsPage() {
       alert(`削除に失敗しました: ${errorMessage}`);
     } finally {
       setDeletingId(null);
+    }
+  };
+
+  // 詳細要約を開く
+  const handleOpenDetailedSummary = async (recording: Recording) => {
+    setDetailedSummaryRecording(recording);
+    setDetailedSummary(null);
+    setLoadingDetailed(true);
+
+    try {
+      const result = await api.getDetailedSummary(recording.id);
+      if (result.success && result.summary) {
+        setDetailedSummary(result.summary);
+      }
+    } catch (err) {
+      console.error('Failed to fetch detailed summary:', err);
+    } finally {
+      setLoadingDetailed(false);
+    }
+  };
+
+  // 詳細要約を生成
+  const handleGenerateDetailedSummary = async () => {
+    if (!detailedSummaryRecording) return;
+
+    setGeneratingDetailed(true);
+
+    try {
+      const result = await api.generateDetailedSummary(detailedSummaryRecording.id);
+      if (result.cached && result.summary) {
+        setDetailedSummary(result.summary);
+      } else {
+        alert('詳細要約の生成を開始しました。処理には数分かかります。\n後ほど再度確認してください。');
+        // ポーリングで結果を取得
+        const pollInterval = setInterval(async () => {
+          try {
+            const pollResult = await api.getDetailedSummary(detailedSummaryRecording.id);
+            if (pollResult.success && pollResult.summary) {
+              setDetailedSummary(pollResult.summary);
+              clearInterval(pollInterval);
+            }
+          } catch {
+            // ignore polling errors
+          }
+        }, 10000); // 10秒ごとにチェック
+
+        // 5分後にポーリング停止
+        setTimeout(() => clearInterval(pollInterval), 300000);
+      }
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : '詳細要約の生成に失敗しました';
+      alert(`エラー: ${errorMessage}`);
+    } finally {
+      setGeneratingDetailed(false);
     }
   };
 
@@ -777,16 +837,28 @@ export default function RecordingsPage() {
               </div>
             </div>
             <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-2 p-3 sm:p-4 border-t">
-              <button
-                onClick={() => {
-                  setSelectedRecording(null);
-                  handleOpenReportModal(selectedRecording);
-                }}
-                className="px-3 py-2 text-sm text-green-600 hover:bg-green-50 rounded-lg flex items-center justify-center gap-1 order-2 sm:order-1"
-              >
-                <FileOutput className="h-4 w-4" />
-                <span className="hidden sm:inline">クライアント</span>報告書を生成
-              </button>
+              <div className="flex gap-2 order-2 sm:order-1">
+                <button
+                  onClick={() => {
+                    setSelectedRecording(null);
+                    handleOpenReportModal(selectedRecording);
+                  }}
+                  className="px-3 py-2 text-sm text-green-600 hover:bg-green-50 rounded-lg flex items-center justify-center gap-1"
+                >
+                  <FileOutput className="h-4 w-4" />
+                  <span className="hidden sm:inline">報告書</span>
+                </button>
+                <button
+                  onClick={() => {
+                    setSelectedRecording(null);
+                    handleOpenDetailedSummary(selectedRecording);
+                  }}
+                  className="px-3 py-2 text-sm text-purple-600 hover:bg-purple-50 rounded-lg flex items-center justify-center gap-1"
+                >
+                  <FileText className="h-4 w-4" />
+                  詳細要約
+                </button>
+              </div>
               <div className="flex gap-2 justify-end order-1 sm:order-2">
                 {selectedRecording.youtubeUrl && (
                   <a
@@ -1045,6 +1117,111 @@ export default function RecordingsPage() {
                   閉じる
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 詳細要約モーダル */}
+      {detailedSummaryRecording && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2 sm:p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] flex flex-col">
+            <div className="flex items-start justify-between p-3 sm:p-4 border-b gap-2">
+              <div>
+                <h3 className="text-base sm:text-lg font-semibold text-gray-900 line-clamp-2">
+                  詳細要約: {detailedSummaryRecording.title}
+                </h3>
+                <p className="text-xs sm:text-sm text-gray-500 mt-1">
+                  {format(new Date(detailedSummaryRecording.meetingDate), 'yyyy年M月d日 HH:mm', { locale: ja })}
+                  {detailedSummaryRecording.clientName && ` • ${detailedSummaryRecording.clientName}`}
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setDetailedSummaryRecording(null);
+                  setDetailedSummary(null);
+                }}
+                className="p-1 text-gray-400 hover:text-gray-600 rounded flex-shrink-0"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="p-3 sm:p-4 overflow-y-auto flex-1">
+              {loadingDetailed ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="h-8 w-8 animate-spin text-purple-500" />
+                  <span className="ml-2 text-gray-500">読み込み中...</span>
+                </div>
+              ) : detailedSummary ? (
+                <div className="prose prose-sm max-w-none">
+                  <pre className="whitespace-pre-wrap font-sans text-sm text-gray-700 bg-gray-50 p-3 sm:p-4 rounded-lg leading-relaxed">
+                    {detailedSummary}
+                  </pre>
+                </div>
+              ) : (
+                <div className="text-center py-12">
+                  <FileText className="h-12 w-12 mx-auto text-gray-300 mb-4" />
+                  <p className="text-gray-500 mb-4">詳細要約はまだ生成されていません</p>
+                  <p className="text-sm text-gray-400 mb-6">
+                    詳細要約は、通常の要約より長く、ミーティングの内容を<br />
+                    より詳細に記録します。処理には数分かかります。
+                  </p>
+                  <button
+                    onClick={handleGenerateDetailedSummary}
+                    disabled={generatingDetailed || !detailedSummaryRecording.transcript}
+                    className="px-6 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-lg disabled:opacity-50 flex items-center gap-2 mx-auto"
+                  >
+                    {generatingDetailed ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        生成開始中...
+                      </>
+                    ) : (
+                      <>
+                        <FileText className="h-4 w-4" />
+                        詳細要約を生成
+                      </>
+                    )}
+                  </button>
+                  {!detailedSummaryRecording.transcript && (
+                    <p className="text-sm text-red-500 mt-2">
+                      文字起こしがありません。先に再処理を実行してください。
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-between items-center gap-2 p-3 sm:p-4 border-t">
+              {detailedSummary && (
+                <button
+                  onClick={handleGenerateDetailedSummary}
+                  disabled={generatingDetailed}
+                  className="px-3 py-2 text-sm text-purple-600 hover:bg-purple-50 rounded-lg flex items-center gap-1"
+                >
+                  {generatingDetailed ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      生成中...
+                    </>
+                  ) : (
+                    <>
+                      <RefreshCw className="h-4 w-4" />
+                      再生成
+                    </>
+                  )}
+                </button>
+              )}
+              <button
+                onClick={() => {
+                  setDetailedSummaryRecording(null);
+                  setDetailedSummary(null);
+                }}
+                className="px-4 py-2 text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg ml-auto"
+              >
+                閉じる
+              </button>
             </div>
           </div>
         </div>

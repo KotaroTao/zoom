@@ -535,4 +535,21 @@ export const api = {
       `/recordings?id=${recordingId}`,
       { method: 'DELETE' }
     ),
+
+  /**
+   * 詳細要約を生成
+   */
+  generateDetailedSummary: (recordingId: string) =>
+    fetchApi<{ success: boolean; message?: string; summary?: string; status?: string; cached?: boolean }>(
+      `/recordings/${recordingId}/detailed-summary`,
+      { method: 'POST' }
+    ),
+
+  /**
+   * 詳細要約を取得
+   */
+  getDetailedSummary: (recordingId: string) =>
+    fetchApi<{ success: boolean; summary: string | null; status?: string }>(
+      `/recordings/${recordingId}/detailed-summary`
+    ),
 };
