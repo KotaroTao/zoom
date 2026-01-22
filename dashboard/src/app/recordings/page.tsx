@@ -142,10 +142,12 @@ export default function RecordingsPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   // 詳細要約状態
-  const [detailedSummaryRecording, setDetailedSummaryRecording] = useState<Recording | null>(null);
   const [detailedSummary, setDetailedSummary] = useState<string | null>(null);
   const [generatingDetailed, setGeneratingDetailed] = useState(false);
   const [loadingDetailed, setLoadingDetailed] = useState(false);
+
+  // モーダルタブ状態
+  const [modalTab, setModalTab] = useState<'summary' | 'transcript' | 'detailed'>('summary');
 
   const fetchRecordings = async () => {
     setLoading(true);
@@ -357,42 +359,26 @@ export default function RecordingsPage() {
     }
   };
 
-  // 詳細要約を開く
-  const handleOpenDetailedSummary = async (recording: Recording) => {
-    setDetailedSummaryRecording(recording);
-    setDetailedSummary(null);
-    setLoadingDetailed(true);
-
-    try {
-      const result = await api.getDetailedSummary(recording.id);
-      if (result.success && result.summary) {
-        setDetailedSummary(result.summary);
-      }
-    } catch (err) {
-      console.error('Failed to fetch detailed summary:', err);
-    } finally {
-      setLoadingDetailed(false);
-    }
-  };
-
   // 詳細要約を生成
   const handleGenerateDetailedSummary = async () => {
-    if (!detailedSummaryRecording) return;
+    if (!selectedRecording) return;
 
     setGeneratingDetailed(true);
 
     try {
-      const result = await api.generateDetailedSummary(detailedSummaryRecording.id);
+      const result = await api.generateDetailedSummary(selectedRecording.id);
       if (result.cached && result.summary) {
         setDetailedSummary(result.summary);
+        setGeneratingDetailed(false);
       } else {
-        alert('詳細要約の生成を開始しました。処理には数分かかります。\n後ほど再度確認してください。');
         // ポーリングで結果を取得
+        const recordingId = selectedRecording.id;
         const pollInterval = setInterval(async () => {
           try {
-            const pollResult = await api.getDetailedSummary(detailedSummaryRecording.id);
+            const pollResult = await api.getDetailedSummary(recordingId);
             if (pollResult.success && pollResult.summary) {
               setDetailedSummary(pollResult.summary);
+              setGeneratingDetailed(false);
               clearInterval(pollInterval);
             }
           } catch {
@@ -401,12 +387,14 @@ export default function RecordingsPage() {
         }, 10000); // 10秒ごとにチェック
 
         // 5分後にポーリング停止
-        setTimeout(() => clearInterval(pollInterval), 300000);
+        setTimeout(() => {
+          clearInterval(pollInterval);
+          setGeneratingDetailed(false);
+        }, 300000);
       }
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : '詳細要約の生成に失敗しました';
       alert(`エラー: ${errorMessage}`);
-    } finally {
       setGeneratingDetailed(false);
     }
   };
@@ -810,53 +798,201 @@ export default function RecordingsPage() {
       </div>
       </div>
 
-      {/* 要約モーダル */}
+      {/* 要約モーダル（タブ付き） */}
       {selectedRecording && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2 sm:p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] sm:max-h-[80vh] flex flex-col">
+          <div className="bg-white rounded-lg shadow-xl max-w-3xl w-full max-h-[90vh] sm:max-h-[85vh] flex flex-col">
+            {/* ヘッダー */}
             <div className="flex items-start justify-between p-3 sm:p-4 border-b gap-2">
-              <h3 className="text-base sm:text-lg font-semibold text-gray-900 line-clamp-2">
-                {selectedRecording.title}
-              </h3>
+              <div className="flex-1 min-w-0">
+                <h3 className="text-base sm:text-lg font-semibold text-gray-900 line-clamp-2">
+                  {selectedRecording.title}
+                </h3>
+                <p className="text-xs sm:text-sm text-gray-500 mt-1">
+                  {format(new Date(selectedRecording.meetingDate), 'yyyy年M月d日 HH:mm', { locale: ja })}
+                  {selectedRecording.clientName && ` • ${selectedRecording.clientName}`}
+                </p>
+              </div>
               <button
-                onClick={() => setSelectedRecording(null)}
+                onClick={() => {
+                  setSelectedRecording(null);
+                  setModalTab('summary');
+                  setDetailedSummary(null);
+                }}
                 className="p-1 text-gray-400 hover:text-gray-600 rounded flex-shrink-0"
               >
                 <X className="h-5 w-5" />
               </button>
             </div>
-            <div className="p-3 sm:p-4 overflow-y-auto flex-1">
-              <div className="text-xs sm:text-sm text-gray-500 mb-3">
-                {format(new Date(selectedRecording.meetingDate), 'yyyy年M月d日 HH:mm', { locale: ja })}
-                {selectedRecording.clientName && ` • ${selectedRecording.clientName}`}
-              </div>
-              <div className="prose prose-sm max-w-none">
-                <pre className="whitespace-pre-wrap font-sans text-sm text-gray-700 bg-gray-50 p-3 sm:p-4 rounded-lg">
-                  {selectedRecording.summary}
-                </pre>
-              </div>
+
+            {/* タブ */}
+            <div className="flex border-b px-3 sm:px-4">
+              <button
+                onClick={() => setModalTab('summary')}
+                className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                  modalTab === 'summary'
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                要約
+              </button>
+              <button
+                onClick={() => setModalTab('transcript')}
+                className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                  modalTab === 'transcript'
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                文字起こし
+              </button>
+              <button
+                onClick={async () => {
+                  setModalTab('detailed');
+                  if (!detailedSummary && selectedRecording) {
+                    setLoadingDetailed(true);
+                    try {
+                      const result = await api.getDetailedSummary(selectedRecording.id);
+                      if (result.success && result.summary) {
+                        setDetailedSummary(result.summary);
+                      }
+                    } catch (err) {
+                      console.error('Failed to fetch detailed summary:', err);
+                    } finally {
+                      setLoadingDetailed(false);
+                    }
+                  }
+                }}
+                className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors flex items-center gap-1 ${
+                  modalTab === 'detailed'
+                    ? 'border-purple-500 text-purple-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                詳細要約
+                {generatingDetailed && (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                )}
+              </button>
             </div>
+
+            {/* コンテンツ */}
+            <div className="p-3 sm:p-4 overflow-y-auto flex-1">
+              {/* 要約タブ */}
+              {modalTab === 'summary' && (
+                <div className="prose prose-sm max-w-none">
+                  {selectedRecording.summary ? (
+                    <pre className="whitespace-pre-wrap font-sans text-sm text-gray-700 bg-gray-50 p-3 sm:p-4 rounded-lg">
+                      {selectedRecording.summary}
+                    </pre>
+                  ) : (
+                    <div className="text-center py-8 text-gray-500">
+                      <FileText className="h-12 w-12 mx-auto text-gray-300 mb-3" />
+                      <p>要約はまだ生成されていません</p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* 文字起こしタブ */}
+              {modalTab === 'transcript' && (
+                <div className="prose prose-sm max-w-none">
+                  {selectedRecording.transcript ? (
+                    <>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-xs text-gray-500">
+                          {selectedRecording.transcript.length.toLocaleString()}文字
+                        </span>
+                      </div>
+                      <pre className="whitespace-pre-wrap font-sans text-sm text-gray-700 bg-gray-50 p-3 sm:p-4 rounded-lg leading-relaxed max-h-[60vh] overflow-y-auto">
+                        {selectedRecording.transcript}
+                      </pre>
+                    </>
+                  ) : (
+                    <div className="text-center py-8 text-gray-500">
+                      <FileText className="h-12 w-12 mx-auto text-gray-300 mb-3" />
+                      <p>文字起こしはまだ生成されていません</p>
+                      <p className="text-sm mt-2">再処理を実行してください</p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* 詳細要約タブ */}
+              {modalTab === 'detailed' && (
+                <div>
+                  {loadingDetailed ? (
+                    <div className="flex items-center justify-center py-12">
+                      <Loader2 className="h-8 w-8 animate-spin text-purple-500" />
+                      <span className="ml-2 text-gray-500">読み込み中...</span>
+                    </div>
+                  ) : generatingDetailed ? (
+                    <div className="text-center py-12">
+                      <Loader2 className="h-12 w-12 mx-auto text-purple-500 animate-spin mb-4" />
+                      <p className="text-purple-600 font-medium">詳細要約を生成中...</p>
+                      <p className="text-sm text-gray-500 mt-2">
+                        処理には数分かかります。このまま待つか、後で確認してください。
+                      </p>
+                    </div>
+                  ) : detailedSummary ? (
+                    <div className="prose prose-sm max-w-none">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-xs text-gray-500">
+                          {detailedSummary.length.toLocaleString()}文字
+                        </span>
+                        <button
+                          onClick={handleGenerateDetailedSummary}
+                          className="text-xs text-purple-600 hover:text-purple-700 flex items-center gap-1"
+                        >
+                          <RefreshCw className="h-3 w-3" />
+                          再生成
+                        </button>
+                      </div>
+                      <pre className="whitespace-pre-wrap font-sans text-sm text-gray-700 bg-purple-50 p-3 sm:p-4 rounded-lg leading-relaxed">
+                        {detailedSummary}
+                      </pre>
+                    </div>
+                  ) : (
+                    <div className="text-center py-8">
+                      <FileText className="h-12 w-12 mx-auto text-gray-300 mb-4" />
+                      <p className="text-gray-600 mb-2">詳細要約はまだ生成されていません</p>
+                      <p className="text-sm text-gray-400 mb-6">
+                        詳細要約は、議論の流れや参加者の発言を<br />
+                        詳細に記録した長文の要約です。
+                      </p>
+                      <button
+                        onClick={handleGenerateDetailedSummary}
+                        disabled={!selectedRecording.transcript}
+                        className="px-6 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-lg disabled:opacity-50 flex items-center gap-2 mx-auto"
+                      >
+                        <FileText className="h-4 w-4" />
+                        詳細要約を生成
+                      </button>
+                      {!selectedRecording.transcript && (
+                        <p className="text-sm text-red-500 mt-3">
+                          文字起こしがありません。先に再処理を実行してください。
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* フッター */}
             <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-2 p-3 sm:p-4 border-t">
               <div className="flex gap-2 order-2 sm:order-1">
                 <button
                   onClick={() => {
                     setSelectedRecording(null);
+                    setModalTab('summary');
                     handleOpenReportModal(selectedRecording);
                   }}
                   className="px-3 py-2 text-sm text-green-600 hover:bg-green-50 rounded-lg flex items-center justify-center gap-1"
                 >
                   <FileOutput className="h-4 w-4" />
-                  <span className="hidden sm:inline">報告書</span>
-                </button>
-                <button
-                  onClick={() => {
-                    setSelectedRecording(null);
-                    handleOpenDetailedSummary(selectedRecording);
-                  }}
-                  className="px-3 py-2 text-sm text-purple-600 hover:bg-purple-50 rounded-lg flex items-center justify-center gap-1"
-                >
-                  <FileText className="h-4 w-4" />
-                  詳細要約
+                  報告書を生成
                 </button>
               </div>
               <div className="flex gap-2 justify-end order-1 sm:order-2">
@@ -872,7 +1008,11 @@ export default function RecordingsPage() {
                   </a>
                 )}
                 <button
-                  onClick={() => setSelectedRecording(null)}
+                  onClick={() => {
+                    setSelectedRecording(null);
+                    setModalTab('summary');
+                    setDetailedSummary(null);
+                  }}
                   className="px-4 py-2 text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg"
                 >
                   閉じる
@@ -1122,110 +1262,6 @@ export default function RecordingsPage() {
         </div>
       )}
 
-      {/* 詳細要約モーダル */}
-      {detailedSummaryRecording && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2 sm:p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] flex flex-col">
-            <div className="flex items-start justify-between p-3 sm:p-4 border-b gap-2">
-              <div>
-                <h3 className="text-base sm:text-lg font-semibold text-gray-900 line-clamp-2">
-                  詳細要約: {detailedSummaryRecording.title}
-                </h3>
-                <p className="text-xs sm:text-sm text-gray-500 mt-1">
-                  {format(new Date(detailedSummaryRecording.meetingDate), 'yyyy年M月d日 HH:mm', { locale: ja })}
-                  {detailedSummaryRecording.clientName && ` • ${detailedSummaryRecording.clientName}`}
-                </p>
-              </div>
-              <button
-                onClick={() => {
-                  setDetailedSummaryRecording(null);
-                  setDetailedSummary(null);
-                }}
-                className="p-1 text-gray-400 hover:text-gray-600 rounded flex-shrink-0"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            <div className="p-3 sm:p-4 overflow-y-auto flex-1">
-              {loadingDetailed ? (
-                <div className="flex items-center justify-center py-12">
-                  <Loader2 className="h-8 w-8 animate-spin text-purple-500" />
-                  <span className="ml-2 text-gray-500">読み込み中...</span>
-                </div>
-              ) : detailedSummary ? (
-                <div className="prose prose-sm max-w-none">
-                  <pre className="whitespace-pre-wrap font-sans text-sm text-gray-700 bg-gray-50 p-3 sm:p-4 rounded-lg leading-relaxed">
-                    {detailedSummary}
-                  </pre>
-                </div>
-              ) : (
-                <div className="text-center py-12">
-                  <FileText className="h-12 w-12 mx-auto text-gray-300 mb-4" />
-                  <p className="text-gray-500 mb-4">詳細要約はまだ生成されていません</p>
-                  <p className="text-sm text-gray-400 mb-6">
-                    詳細要約は、通常の要約より長く、ミーティングの内容を<br />
-                    より詳細に記録します。処理には数分かかります。
-                  </p>
-                  <button
-                    onClick={handleGenerateDetailedSummary}
-                    disabled={generatingDetailed || !detailedSummaryRecording.transcript}
-                    className="px-6 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-lg disabled:opacity-50 flex items-center gap-2 mx-auto"
-                  >
-                    {generatingDetailed ? (
-                      <>
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        生成開始中...
-                      </>
-                    ) : (
-                      <>
-                        <FileText className="h-4 w-4" />
-                        詳細要約を生成
-                      </>
-                    )}
-                  </button>
-                  {!detailedSummaryRecording.transcript && (
-                    <p className="text-sm text-red-500 mt-2">
-                      文字起こしがありません。先に再処理を実行してください。
-                    </p>
-                  )}
-                </div>
-              )}
-            </div>
-
-            <div className="flex justify-between items-center gap-2 p-3 sm:p-4 border-t">
-              {detailedSummary && (
-                <button
-                  onClick={handleGenerateDetailedSummary}
-                  disabled={generatingDetailed}
-                  className="px-3 py-2 text-sm text-purple-600 hover:bg-purple-50 rounded-lg flex items-center gap-1"
-                >
-                  {generatingDetailed ? (
-                    <>
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      生成中...
-                    </>
-                  ) : (
-                    <>
-                      <RefreshCw className="h-4 w-4" />
-                      再生成
-                    </>
-                  )}
-                </button>
-              )}
-              <button
-                onClick={() => {
-                  setDetailedSummaryRecording(null);
-                  setDetailedSummary(null);
-                }}
-                className="px-4 py-2 text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg ml-auto"
-              >
-                閉じる
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </DashboardLayout>
   );
 }
