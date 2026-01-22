@@ -1,18 +1,61 @@
 'use client';
 
-import { ReactNode } from 'react';
+import { ReactNode, useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useSession, signOut } from 'next-auth/react';
 import { Sidebar } from './Sidebar';
-import { LogOut, User, Loader2, Building2, AlertCircle } from 'lucide-react';
+import { LogOut, User, Loader2, Building2, AlertCircle, ChevronDown, Check } from 'lucide-react';
 import { getRoleLabel, getRoleColor } from '@/lib/permissions-client';
+import { api, Organization } from '@/lib/api';
 
 interface DashboardLayoutProps {
   children: ReactNode;
 }
 
 export function DashboardLayout({ children }: DashboardLayoutProps) {
-  const { data: session, status } = useSession();
+  const { data: session, status, update } = useSession();
+  const [organizations, setOrganizations] = useState<Organization[]>([]);
+  const [orgMenuOpen, setOrgMenuOpen] = useState(false);
+  const [switching, setSwitching] = useState(false);
+
+  // 所属組織一覧を取得
+  useEffect(() => {
+    const fetchOrganizations = async () => {
+      try {
+        const data = await api.getOrganizations();
+        setOrganizations(data.organizations);
+      } catch (err) {
+        console.error('Failed to fetch organizations:', err);
+      }
+    };
+
+    if (session?.user?.id) {
+      fetchOrganizations();
+    }
+  }, [session?.user?.id]);
+
+  // 組織切り替え
+  const handleSwitchOrganization = async (orgId: string) => {
+    if (switching || orgId === session?.user?.organizationId) {
+      setOrgMenuOpen(false);
+      return;
+    }
+
+    setSwitching(true);
+    try {
+      const result = await api.switchOrganization(orgId);
+      // セッションを更新
+      await update(result.sessionUpdate);
+      // ページをリロードして新しい組織のデータを取得
+      window.location.reload();
+    } catch (err) {
+      console.error('Failed to switch organization:', err);
+      alert('組織の切り替えに失敗しました');
+    } finally {
+      setSwitching(false);
+      setOrgMenuOpen(false);
+    }
+  };
 
   if (status === 'loading') {
     return (
@@ -23,6 +66,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   }
 
   const hasOrganization = !!session?.user?.organizationId;
+  const hasMultipleOrganizations = organizations.length > 1;
 
   return (
     <div className="flex h-screen">
@@ -35,10 +79,76 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
             <div className="flex items-center text-sm gap-2">
               {hasOrganization ? (
                 <>
-                  <div className="flex items-center text-gray-600">
-                    <Building2 className="h-4 w-4 mr-1" />
-                    <span>{session?.user?.organizationName || '組織'}</span>
-                  </div>
+                  {/* 複数組織の場合はドロップダウン */}
+                  {hasMultipleOrganizations ? (
+                    <div className="relative">
+                      <button
+                        onClick={() => setOrgMenuOpen(!orgMenuOpen)}
+                        className="flex items-center gap-1 text-gray-600 hover:text-gray-900 transition-colors"
+                        disabled={switching}
+                      >
+                        <Building2 className="h-4 w-4" />
+                        <span>{session?.user?.organizationName || '組織'}</span>
+                        {switching ? (
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                        ) : (
+                          <ChevronDown className="h-3 w-3" />
+                        )}
+                      </button>
+                      {orgMenuOpen && (
+                        <>
+                          <div
+                            className="fixed inset-0 z-10"
+                            onClick={() => setOrgMenuOpen(false)}
+                          />
+                          <div className="absolute left-0 z-20 mt-2 w-64 rounded-lg shadow-lg bg-white ring-1 ring-black ring-opacity-5">
+                            <div className="py-1">
+                              <div className="px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                                組織を切り替え
+                              </div>
+                              {organizations.map((org) => (
+                                <button
+                                  key={org.id}
+                                  onClick={() => handleSwitchOrganization(org.id)}
+                                  className={`w-full text-left px-3 py-2 flex items-center justify-between hover:bg-gray-50 ${
+                                    org.id === session?.user?.organizationId
+                                      ? 'bg-primary-50'
+                                      : ''
+                                  }`}
+                                >
+                                  <div>
+                                    <div className="font-medium text-gray-900">
+                                      {org.name}
+                                    </div>
+                                    <div className="text-xs text-gray-500">
+                                      {getRoleLabel(org.role)} / {org.memberCount}人
+                                    </div>
+                                  </div>
+                                  {org.id === session?.user?.organizationId && (
+                                    <Check className="h-4 w-4 text-primary-600" />
+                                  )}
+                                </button>
+                              ))}
+                              <div className="border-t border-gray-100 mt-1 pt-1">
+                                <Link
+                                  href="/zoom/onboarding"
+                                  className="block px-3 py-2 text-sm text-primary-600 hover:bg-gray-50"
+                                  onClick={() => setOrgMenuOpen(false)}
+                                >
+                                  + 新しい組織を作成
+                                </Link>
+                              </div>
+                            </div>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="flex items-center text-gray-600">
+                      <Building2 className="h-4 w-4 mr-1" />
+                      <span>{session?.user?.organizationName || '組織'}</span>
+                    </div>
+                  )}
                   {session?.user?.role && (
                     <span
                       className={`px-2 py-0.5 text-xs font-medium rounded-full ${getRoleColor(session.user.role).bg} ${getRoleColor(session.user.role).text}`}

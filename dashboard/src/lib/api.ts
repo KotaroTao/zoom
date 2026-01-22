@@ -350,4 +350,17 @@ export const api = {
         method: 'DELETE',
       }
     ),
+
+  /**
+   * 組織を切り替え
+   */
+  switchOrganization: (organizationId: string) =>
+    fetchApi<{
+      success: boolean;
+      organization: { id: string; name: string; role: string };
+      sessionUpdate: { organizationId: string; organizationName: string; role: string };
+    }>('/organizations/switch', {
+      method: 'POST',
+      body: JSON.stringify({ organizationId }),
+    }),
 };
