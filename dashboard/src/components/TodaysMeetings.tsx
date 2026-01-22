@@ -95,10 +95,10 @@ export function TodaysMeetings({ recordings }: TodaysMeetingsProps) {
                       {recording.youtubeUrl && (
                         <Youtube className="w-4 h-4 text-red-500" />
                       )}
-                      {recording.sheetsRowId && (
+                      {recording.sheetsSuccess && (
                         <FileSpreadsheet className="w-4 h-4 text-green-600" />
                       )}
-                      {recording.notionPageId && (
+                      {recording.notionSuccess && (
                         <BookOpen className="w-4 h-4 text-gray-700" />
                       )}
                     </div>
