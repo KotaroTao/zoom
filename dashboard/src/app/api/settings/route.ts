@@ -4,7 +4,14 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
-import { getAuthContext, unauthorizedResponse, isAdmin } from '@/lib/api-auth';
+import {
+  getAuthContext,
+  unauthorizedResponse,
+  forbiddenResponse,
+  checkPermission,
+  PERMISSIONS,
+  getRoleLabel,
+} from '@/lib/api-auth';
 
 /**
  * 文字列をマスクする
@@ -25,7 +32,7 @@ export async function GET() {
   }
 
   try {
-    const { organizationId } = auth;
+    const { organizationId, role } = auth;
 
     // 組織未所属の場合は設定なしを返す
     if (!organizationId) {
@@ -33,6 +40,11 @@ export async function GET() {
         { error: '組織に参加すると設定が利用できます', noOrganization: true },
         { status: 403 }
       );
+    }
+
+    // 権限チェック（設定閲覧は管理者以上）
+    if (!checkPermission(role, PERMISSIONS.SETTINGS_VIEW)) {
+      return forbiddenResponse(`${getRoleLabel(role)}は設定を閲覧できません`);
     }
 
     // 組織の設定を取得（存在しない場合は作成）
@@ -86,12 +98,9 @@ export async function PUT(request: NextRequest) {
     );
   }
 
-  // 管理者権限をチェック
-  if (!isAdmin(auth.role)) {
-    return NextResponse.json(
-      { error: '設定を変更する権限がありません' },
-      { status: 403 }
-    );
+  // 権限チェック（設定変更は管理者以上）
+  if (!checkPermission(auth.role, PERMISSIONS.SETTINGS_EDIT)) {
+    return forbiddenResponse(`${getRoleLabel(auth.role)}は設定を変更できません`);
   }
 
   try {

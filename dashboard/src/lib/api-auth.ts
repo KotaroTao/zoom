@@ -7,6 +7,29 @@
 import { getServerSession } from 'next-auth';
 import { authOptions } from './auth';
 import { prisma } from './db';
+import {
+  hasPermission,
+  isAdmin as checkIsAdmin,
+  isOwner as checkIsOwner,
+  isMember as checkIsMember,
+  canModifyRole,
+  getRoleLabel,
+  type Permission,
+} from './permissions';
+
+// permissions.tsから再エクスポート
+export {
+  ROLES,
+  PERMISSIONS,
+  hasPermission,
+  canModifyRole,
+  getAssignableRoles,
+  getRoleLabel,
+  getRoleDescription,
+  getAllRoles,
+  type Role,
+  type Permission,
+} from './permissions';
 
 export interface AuthContext {
   userId: string;
@@ -62,10 +85,31 @@ export async function getAuthContext(): Promise<AuthContext | null> {
 }
 
 /**
- * 管理者権限をチェック
+ * オーナーかどうか
+ */
+export function isOwner(role: string): boolean {
+  return checkIsOwner(role);
+}
+
+/**
+ * 管理者以上かどうか（オーナーまたは管理者）
  */
 export function isAdmin(role: string): boolean {
-  return role === 'owner' || role === 'admin';
+  return checkIsAdmin(role);
+}
+
+/**
+ * メンバー以上かどうか（閲覧者以外）
+ */
+export function isMember(role: string): boolean {
+  return checkIsMember(role);
+}
+
+/**
+ * 特定の権限を持っているかチェック
+ */
+export function checkPermission(role: string, permission: Permission): boolean {
+  return hasPermission(role, permission);
 }
 
 /**
@@ -82,8 +126,21 @@ export function unauthorizedResponse() {
  * 組織未所属レスポンスを返す
  */
 export function noOrganizationResponse() {
-  return new Response(JSON.stringify({ error: '組織に所属していません' }), {
+  return new Response(JSON.stringify({ error: '組織に所属していません', noOrganization: true }), {
     status: 403,
     headers: { 'Content-Type': 'application/json' },
   });
+}
+
+/**
+ * 権限不足レスポンスを返す
+ */
+export function forbiddenResponse(message?: string) {
+  return new Response(
+    JSON.stringify({ error: message || '権限がありません' }),
+    {
+      status: 403,
+      headers: { 'Content-Type': 'application/json' },
+    }
+  );
 }

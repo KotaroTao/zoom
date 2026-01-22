@@ -197,6 +197,22 @@ export interface OrganizationsResponse {
   organizations: Organization[];
 }
 
+export interface Member {
+  id: string;
+  userId: string;
+  email: string;
+  name: string | null;
+  image: string | null;
+  role: string;
+  roleLabel: string;
+  joinedAt: string;
+}
+
+export interface MembersResponse {
+  members: Member[];
+  message?: string;
+}
+
 // API Functions
 export const api = {
   /**
@@ -306,4 +322,32 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ name }),
     }),
+
+  /**
+   * メンバー一覧を取得
+   */
+  getMembers: () => fetchApi<MembersResponse>('/organizations/members'),
+
+  /**
+   * メンバーの役割を更新
+   */
+  updateMemberRole: (memberId: string, newRole: string) =>
+    fetchApi<{ success: boolean; message: string; member: { id: string; role: string; roleLabel: string } }>(
+      '/organizations/members',
+      {
+        method: 'PUT',
+        body: JSON.stringify({ memberId, newRole }),
+      }
+    ),
+
+  /**
+   * メンバーを削除
+   */
+  removeMember: (memberId: string) =>
+    fetchApi<{ success: boolean; message: string }>(
+      `/organizations/members?memberId=${memberId}`,
+      {
+        method: 'DELETE',
+      }
+    ),
 };

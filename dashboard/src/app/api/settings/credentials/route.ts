@@ -4,7 +4,14 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
-import { getAuthContext, unauthorizedResponse, isAdmin } from '@/lib/api-auth';
+import {
+  getAuthContext,
+  unauthorizedResponse,
+  forbiddenResponse,
+  checkPermission,
+  PERMISSIONS,
+  getRoleLabel,
+} from '@/lib/api-auth';
 
 /**
  * 文字列をマスクする
@@ -32,12 +39,9 @@ export async function PUT(request: NextRequest) {
     );
   }
 
-  // 管理者権限をチェック
-  if (!isAdmin(auth.role)) {
-    return NextResponse.json(
-      { error: 'API認証情報を変更する権限がありません' },
-      { status: 403 }
-    );
+  // 権限チェック（認証情報変更は管理者以上）
+  if (!checkPermission(auth.role, PERMISSIONS.CREDENTIALS_EDIT)) {
+    return forbiddenResponse(`${getRoleLabel(auth.role)}はAPI認証情報を変更できません`);
   }
 
   try {

@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useSession, signOut } from 'next-auth/react';
 import { Sidebar } from './Sidebar';
 import { LogOut, User, Loader2, Building2, AlertCircle } from 'lucide-react';
+import { getRoleLabel, getRoleColor } from '@/lib/permissions-client';
 
 interface DashboardLayoutProps {
   children: ReactNode;
@@ -31,12 +32,21 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
         <header className="bg-white border-b border-gray-200 px-6 py-3">
           <div className="flex items-center justify-between">
             {/* 組織情報 */}
-            <div className="flex items-center text-sm">
+            <div className="flex items-center text-sm gap-2">
               {hasOrganization ? (
-                <div className="flex items-center text-gray-600">
-                  <Building2 className="h-4 w-4 mr-1" />
-                  <span>{session?.user?.organizationName || '組織'}</span>
-                </div>
+                <>
+                  <div className="flex items-center text-gray-600">
+                    <Building2 className="h-4 w-4 mr-1" />
+                    <span>{session?.user?.organizationName || '組織'}</span>
+                  </div>
+                  {session?.user?.role && (
+                    <span
+                      className={`px-2 py-0.5 text-xs font-medium rounded-full ${getRoleColor(session.user.role).bg} ${getRoleColor(session.user.role).text}`}
+                    >
+                      {getRoleLabel(session.user.role)}
+                    </span>
+                  )}
+                </>
               ) : (
                 <Link
                   href="/zoom/onboarding"
