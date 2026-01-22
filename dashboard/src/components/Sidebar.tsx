@@ -7,18 +7,16 @@ import {
   Users,
   Video,
   Settings,
-  BarChart3,
   RefreshCw,
-  HelpCircle,
+  FileText,
 } from 'lucide-react';
 
 const navigation = [
   { name: 'ダッシュボード', href: '/', icon: Home },
   { name: '録画一覧', href: '/recordings', icon: Video },
   { name: 'クライアント', href: '/clients', icon: Users },
-  { name: '統計', href: '/stats', icon: BarChart3 },
-  { name: '設定', href: '/settings', icon: Settings },
-  { name: 'セットアップ', href: '/setup', icon: HelpCircle },
+  { name: 'テンプレート', href: '/templates', icon: FileText },
+  { name: 'セットアップ', href: '/setup', icon: Settings },
 ];
 
 export function Sidebar() {

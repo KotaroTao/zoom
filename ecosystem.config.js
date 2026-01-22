@@ -20,6 +20,8 @@ module.exports = {
       env: {
         NODE_ENV: 'production',
         PORT: 3002,
+        // 重要: ダッシュボードと同じデータベースを使用
+        DATABASE_URL: 'file:/var/www/zoom/dashboard/prisma/data.db',
       },
       env_file: '/var/www/zoom/.env',
       error_file: '/var/log/pm2/zoom-backend-error.log',
@@ -43,6 +45,10 @@ module.exports = {
       env: {
         NODE_ENV: 'production',
         PORT: 3001,
+        // バックエンドサーバーURL
+        BACKEND_URL: 'http://localhost:3002',
+        // データベースURL
+        DATABASE_URL: 'file:/var/www/zoom/dashboard/prisma/data.db',
         // NextAuth設定（デプロイ時に変更すること）
         NEXTAUTH_URL: 'https://tao-dx.com/zoom',
         NEXTAUTH_SECRET: 'your-production-secret-key-change-this',

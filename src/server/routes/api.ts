@@ -9,6 +9,11 @@ import { zoomClient } from '../../services/zoom/client.js';
 import { youtubeClient } from '../../services/youtube/client.js';
 import { config } from '../../config/env.js';
 import OpenAI from 'openai';
+import {
+  generateClientReport,
+  generateAndSaveClientReport,
+  previewTemplate,
+} from '../../services/report/index.js';
 
 export const apiRouter = Router();
 
@@ -631,4 +636,673 @@ apiRouter.get('/connection-status', async (_req: Request, res: Response) => {
   };
 
   res.json(results);
+});
+
+// =============================================
+// レポートテンプレート API
+// =============================================
+
+/**
+ * テンプレート一覧を取得
+ */
+apiRouter.get('/templates', async (req: Request, res: Response) => {
+  try {
+    const includeInactive = req.query.includeInactive === 'true';
+
+    // 最初の組織のテンプレートを取得
+    const org = await prisma.organization.findFirst();
+    if (!org) {
+      return res.status(404).json({ error: '組織が見つかりません' });
+    }
+
+    const where: Record<string, unknown> = { organizationId: org.id };
+    if (!includeInactive) {
+      where.isActive = true;
+    }
+
+    const templates = await prisma.reportTemplate.findMany({
+      where,
+      orderBy: [
+        { isDefault: 'desc' },
+        { createdAt: 'desc' },
+      ],
+    });
+
+    res.json({ templates });
+  } catch (error) {
+    console.error('Templates GET error:', error);
+    res.status(500).json({ error: 'テンプレート一覧の取得に失敗しました' });
+  }
+});
+
+/**
+ * テンプレート詳細を取得
+ */
+apiRouter.get('/templates/:id', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    const template = await prisma.reportTemplate.findUnique({
+      where: { id },
+    });
+
+    if (!template) {
+      return res.status(404).json({ error: 'テンプレートが見つかりません' });
+    }
+
+    res.json(template);
+  } catch (error) {
+    console.error('Template GET error:', error);
+    res.status(500).json({ error: 'テンプレートの取得に失敗しました' });
+  }
+});
+
+/**
+ * テンプレートを作成
+ */
+apiRouter.post('/templates', async (req: Request, res: Response) => {
+  try {
+    const { name, description, content, isDefault } = req.body;
+
+    if (!name || !content) {
+      return res.status(400).json({ error: 'テンプレート名と本文は必須です' });
+    }
+
+    // 最初の組織を取得
+    const org = await prisma.organization.findFirst();
+    if (!org) {
+      return res.status(404).json({ error: '組織が見つかりません' });
+    }
+
+    // デフォルトに設定する場合、既存のデフォルトを解除
+    if (isDefault) {
+      await prisma.reportTemplate.updateMany({
+        where: { organizationId: org.id, isDefault: true },
+        data: { isDefault: false },
+      });
+    }
+
+    const template = await prisma.reportTemplate.create({
+      data: {
+        organizationId: org.id,
+        name,
+        description: description || null,
+        content,
+        isDefault: isDefault || false,
+        isActive: true,
+      },
+    });
+
+    res.status(201).json(template);
+  } catch (error) {
+    console.error('Template POST error:', error);
+    res.status(500).json({ error: 'テンプレートの作成に失敗しました' });
+  }
+});
+
+/**
+ * テンプレートを更新
+ */
+apiRouter.put('/templates/:id', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { name, description, content, isDefault, isActive } = req.body;
+
+    const existing = await prisma.reportTemplate.findUnique({ where: { id } });
+    if (!existing) {
+      return res.status(404).json({ error: 'テンプレートが見つかりません' });
+    }
+
+    // デフォルトに設定する場合、既存のデフォルトを解除
+    if (isDefault && !existing.isDefault) {
+      await prisma.reportTemplate.updateMany({
+        where: { organizationId: existing.organizationId, isDefault: true },
+        data: { isDefault: false },
+      });
+    }
+
+    const template = await prisma.reportTemplate.update({
+      where: { id },
+      data: {
+        name: name !== undefined ? name : existing.name,
+        description: description !== undefined ? description : existing.description,
+        content: content !== undefined ? content : existing.content,
+        isDefault: isDefault !== undefined ? isDefault : existing.isDefault,
+        isActive: isActive !== undefined ? isActive : existing.isActive,
+      },
+    });
+
+    res.json(template);
+  } catch (error) {
+    console.error('Template PUT error:', error);
+    res.status(500).json({ error: 'テンプレートの更新に失敗しました' });
+  }
+});
+
+/**
+ * テンプレートを削除
+ */
+apiRouter.delete('/templates/:id', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    const existing = await prisma.reportTemplate.findUnique({ where: { id } });
+    if (!existing) {
+      return res.status(404).json({ error: 'テンプレートが見つかりません' });
+    }
+
+    // デフォルトテンプレートは削除不可
+    if (existing.isDefault) {
+      return res.status(400).json({ error: 'デフォルトテンプレートは削除できません。先に別のテンプレートをデフォルトに設定してください。' });
+    }
+
+    await prisma.reportTemplate.delete({ where: { id } });
+
+    res.json({ success: true, message: 'テンプレートを削除しました' });
+  } catch (error) {
+    console.error('Template DELETE error:', error);
+    res.status(500).json({ error: 'テンプレートの削除に失敗しました' });
+  }
+});
+
+/**
+ * テンプレートのプレビュー
+ */
+apiRouter.post('/templates/preview', async (req: Request, res: Response) => {
+  try {
+    const { content } = req.body;
+
+    if (!content) {
+      return res.status(400).json({ error: 'テンプレート本文が必要です' });
+    }
+
+    const preview = previewTemplate(content);
+    res.json({ preview });
+  } catch (error) {
+    console.error('Template preview error:', error);
+    res.status(500).json({ error: 'プレビューの生成に失敗しました' });
+  }
+});
+
+// =============================================
+// クライアント報告書 API
+// =============================================
+
+/**
+ * 録画の報告書を生成
+ */
+apiRouter.post('/recordings/:id/generate-report', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { templateId, save } = req.body;
+
+    // save=trueの場合はDBに保存
+    const result = save
+      ? await generateAndSaveClientReport(id, { templateId })
+      : await generateClientReport(id, { templateId });
+
+    if (!result.success) {
+      return res.status(400).json({ error: result.error });
+    }
+
+    res.json({
+      success: true,
+      report: result.report,
+      templateId: result.templateId,
+    });
+  } catch (error) {
+    console.error('Report generation error:', error);
+    res.status(500).json({ error: '報告書の生成に失敗しました' });
+  }
+});
+
+/**
+ * 録画の文字起こし・要約を再処理（非同期）
+ */
+apiRouter.post('/recordings/:id/reprocess', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    // 録画を取得
+    const recording = await prisma.recording.findUnique({
+      where: { id },
+    });
+
+    if (!recording) {
+      return res.status(404).json({ error: '録画が見つかりません' });
+    }
+
+    // すでに処理中の場合はエラー
+    if (['DOWNLOADING', 'TRANSCRIBING', 'SUMMARIZING'].includes(recording.status)) {
+      return res.status(400).json({ error: '既に処理中です' });
+    }
+
+    // ステータスを更新
+    await prisma.recording.update({
+      where: { id },
+      data: { status: 'DOWNLOADING', errorMessage: null },
+    });
+
+    // 非同期で処理を実行（レスポンスは先に返す）
+    processReprocessing(id, recording).catch((error) => {
+      console.error('Background reprocess error:', error);
+    });
+
+    // 即座にレスポンスを返す
+    res.json({
+      success: true,
+      message: '再処理を開始しました。処理には数分〜十数分かかる場合があります。',
+      status: 'DOWNLOADING',
+    });
+  } catch (error) {
+    console.error('Reprocess error:', error);
+    res.status(500).json({
+      error: error instanceof Error ? error.message : '再処理に失敗しました',
+    });
+  }
+});
+
+/**
+ * 再処理のバックグラウンド処理
+ */
+async function processReprocessing(id: string, recording: { zoomMeetingUuid: string | null; zoomMeetingId: string; clientName: string | null; title: string }) {
+  let downloadedFilePath: string | null = null;
+
+  try {
+    // インポート（動的にインポート）
+    const { zoomClient } = await import('../../services/zoom/client.js');
+    const { downloadRecordingFile } = await import('../../services/zoom/download.js');
+    const { transcribeWithWhisper } = await import('../../services/transcription/whisper.js');
+    const { generateSummary, summarizeLongText } = await import('../../services/summary/openai.js');
+    const { deleteFile } = await import('../../utils/fileManager.js');
+
+    // Zoom APIから録画情報を取得してダウンロード
+    let downloadUrl: string | null = null;
+
+    if (recording.zoomMeetingUuid) {
+      try {
+        const recordingDetails = await zoomClient.getRecordingDetails(recording.zoomMeetingUuid);
+        const mp4File = recordingDetails.recording_files?.find(
+          (f: { file_type: string; recording_type?: string }) =>
+            f.file_type === 'MP4' && f.recording_type === 'shared_screen_with_speaker_view'
+        ) || recordingDetails.recording_files?.find(
+          (f: { file_type: string }) => f.file_type === 'MP4'
+        );
+
+        if (mp4File && mp4File.download_url) {
+          downloadUrl = mp4File.download_url;
+        }
+      } catch (apiError) {
+        console.error('Zoom API error:', apiError);
+      }
+    }
+
+    if (!downloadUrl) {
+      await prisma.recording.update({
+        where: { id },
+        data: { status: 'FAILED', errorMessage: 'Zoom録画URLを取得できませんでした' },
+      });
+      return;
+    }
+
+    // ダウンロード
+    const downloadResult = await downloadRecordingFile({
+      fileId: recording.zoomMeetingId,
+      fileType: 'MP4',
+      recordingType: 'shared_screen_with_speaker_view',
+      downloadUrl,
+      fileSize: 0,
+      fileName: `reprocess-${id}.mp4`,
+    });
+
+    if (!downloadResult.success || !downloadResult.filePath) {
+      await prisma.recording.update({
+        where: { id },
+        data: { status: 'FAILED', errorMessage: `ダウンロード失敗: ${downloadResult.error}` },
+      });
+      return;
+    }
+
+    downloadedFilePath = downloadResult.filePath;
+
+    // 文字起こし
+    await prisma.recording.update({
+      where: { id },
+      data: { status: 'TRANSCRIBING' },
+    });
+
+    const transcriptionResult = await transcribeWithWhisper(downloadedFilePath, {
+      language: 'ja',
+    });
+
+    if (!transcriptionResult.success || !transcriptionResult.text) {
+      await prisma.recording.update({
+        where: { id },
+        data: { status: 'FAILED', errorMessage: `文字起こし失敗: ${transcriptionResult.error}` },
+      });
+      return;
+    }
+
+    const transcript = transcriptionResult.text;
+
+    // 要約
+    await prisma.recording.update({
+      where: { id },
+      data: { status: 'SUMMARIZING', transcript, transcribedAt: new Date() },
+    });
+
+    // 長い文字起こしの場合は分割要約を使用（40,000文字以上）
+    const summaryOptions = {
+      clientName: recording.clientName || undefined,
+      meetingTitle: recording.title,
+      style: 'detailed' as const,
+    };
+    // 20,000文字以上は分割要約（30,000 TPM制限対策）
+    const summaryResult = transcript.length > 20000
+      ? await summarizeLongText(transcript, summaryOptions)
+      : await generateSummary(transcript, summaryOptions);
+
+    let summary: string | null = null;
+    if (summaryResult.success && summaryResult.summary) {
+      summary = summaryResult.summary;
+    }
+
+    // 完了 - 要約がない場合はFAILEDにする
+    const finalStatus = summary ? 'COMPLETED' : 'FAILED';
+    await prisma.recording.update({
+      where: { id },
+      data: {
+        status: finalStatus,
+        summary,
+        summarizedAt: summary ? new Date() : undefined,
+        errorMessage: summary ? null : '要約の生成に失敗しました',
+      },
+    });
+
+    console.log(`Reprocess completed for recording ${id}`);
+  } catch (error) {
+    console.error('Reprocess background error:', error);
+    await prisma.recording.update({
+      where: { id },
+      data: {
+        status: 'FAILED',
+        errorMessage: error instanceof Error ? error.message : '再処理に失敗しました',
+      },
+    }).catch(() => {});
+  } finally {
+    // 一時ファイルを削除
+    if (downloadedFilePath) {
+      const { deleteFile } = await import('../../utils/fileManager.js');
+      await deleteFile(downloadedFilePath).catch(() => {});
+    }
+  }
+}
+
+/**
+ * 録画の報告書を取得
+ */
+apiRouter.get('/recordings/:id/report', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    const recording = await prisma.recording.findUnique({
+      where: { id },
+      select: {
+        clientReport: true,
+        clientReportTemplateId: true,
+        clientReportGeneratedAt: true,
+      },
+    });
+
+    if (!recording) {
+      return res.status(404).json({ error: '録画が見つかりません' });
+    }
+
+    if (!recording.clientReport) {
+      return res.status(404).json({ error: '報告書がまだ生成されていません' });
+    }
+
+    res.json({
+      report: recording.clientReport,
+      templateId: recording.clientReportTemplateId,
+      generatedAt: recording.clientReportGeneratedAt,
+    });
+  } catch (error) {
+    console.error('Report GET error:', error);
+    res.status(500).json({ error: '報告書の取得に失敗しました' });
+  }
+});
+
+/**
+ * 詳細要約を生成
+ */
+apiRouter.post('/recordings/:id/detailed-summary', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    const recording = await prisma.recording.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        title: true,
+        clientName: true,
+        transcript: true,
+        detailedSummary: true,
+        detailedSummaryStatus: true,
+      },
+    });
+
+    if (!recording) {
+      return res.status(404).json({ error: '録画が見つかりません' });
+    }
+
+    if (!recording.transcript) {
+      return res.status(400).json({ error: '文字起こしがありません。先に再処理を実行してください。' });
+    }
+
+    // 既に詳細要約がある場合は返す
+    if (recording.detailedSummary) {
+      return res.json({
+        success: true,
+        summary: recording.detailedSummary,
+        status: 'COMPLETED',
+        cached: true,
+      });
+    }
+
+    // 既に生成中の場合
+    if (recording.detailedSummaryStatus === 'GENERATING') {
+      return res.json({
+        success: true,
+        message: '詳細要約を生成中です。しばらくお待ちください。',
+        status: 'GENERATING',
+      });
+    }
+
+    // ステータスをGENERATINGに設定
+    await prisma.recording.update({
+      where: { id },
+      data: { detailedSummaryStatus: 'GENERATING' },
+    });
+
+    // バックグラウンドで詳細要約を生成
+    res.json({
+      success: true,
+      message: '詳細要約の生成を開始しました。処理には数分かかる場合があります。',
+      status: 'GENERATING',
+    });
+
+    // バックグラウンド処理
+    generateDetailedSummaryBackground(id, recording).catch((error) => {
+      console.error('Detailed summary generation error:', error);
+    });
+  } catch (error) {
+    console.error('Detailed summary error:', error);
+    res.status(500).json({ error: '詳細要約の生成に失敗しました' });
+  }
+});
+
+/**
+ * 詳細要約の取得
+ */
+apiRouter.get('/recordings/:id/detailed-summary', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    const recording = await prisma.recording.findUnique({
+      where: { id },
+      select: {
+        detailedSummary: true,
+        detailedSummaryStatus: true,
+      },
+    });
+
+    if (!recording) {
+      return res.status(404).json({ error: '録画が見つかりません' });
+    }
+
+    // 生成中の場合
+    if (recording.detailedSummaryStatus === 'GENERATING') {
+      return res.json({
+        success: false,
+        summary: null,
+        status: 'GENERATING',
+      });
+    }
+
+    // 失敗した場合
+    if (recording.detailedSummaryStatus === 'FAILED') {
+      return res.json({
+        success: false,
+        summary: null,
+        status: 'FAILED',
+      });
+    }
+
+    if (!recording.detailedSummary) {
+      return res.json({
+        success: false,
+        summary: null,
+        status: 'NOT_GENERATED',
+      });
+    }
+
+    res.json({
+      success: true,
+      summary: recording.detailedSummary,
+      status: 'COMPLETED',
+    });
+  } catch (error) {
+    console.error('Get detailed summary error:', error);
+    res.status(500).json({ error: '詳細要約の取得に失敗しました' });
+  }
+});
+
+/**
+ * 詳細要約をバックグラウンドで生成
+ */
+async function generateDetailedSummaryBackground(
+  id: string,
+  recording: { transcript: string | null; title: string; clientName: string | null }
+) {
+  try {
+    const { generateComprehensiveSummary } = await import('../../services/summary/openai.js');
+
+    const result = await generateComprehensiveSummary(recording.transcript!, {
+      clientName: recording.clientName || undefined,
+      meetingTitle: recording.title,
+    });
+
+    if (result.success && result.summary) {
+      await prisma.recording.update({
+        where: { id },
+        data: {
+          detailedSummary: result.summary,
+          detailedSummaryStatus: 'COMPLETED',
+        },
+      });
+      console.log(`Detailed summary generated for recording ${id}`);
+    } else {
+      await prisma.recording.update({
+        where: { id },
+        data: {
+          detailedSummaryStatus: 'FAILED',
+        },
+      });
+      console.error(`Detailed summary generation failed for recording ${id}:`, result.error);
+    }
+  } catch (error) {
+    await prisma.recording.update({
+      where: { id },
+      data: {
+        detailedSummaryStatus: 'FAILED',
+      },
+    }).catch(() => {});
+    console.error('Detailed summary background error:', error);
+  }
+}
+
+// =============================================
+// 報告書送付ステータス API
+// =============================================
+
+/**
+ * 報告書を送付済みにする
+ */
+apiRouter.post('/recordings/:id/report-sent', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    const recording = await prisma.recording.findUnique({
+      where: { id },
+    });
+
+    if (!recording) {
+      return res.status(404).json({ error: '録画が見つかりません' });
+    }
+
+    await prisma.recording.update({
+      where: { id },
+      data: { reportSentAt: new Date() },
+    });
+
+    res.json({
+      success: true,
+      message: '報告書を送付済みにしました',
+      reportSentAt: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.error('Report sent error:', error);
+    res.status(500).json({ error: '送付ステータスの更新に失敗しました' });
+  }
+});
+
+/**
+ * 報告書送付ステータスをクリア
+ */
+apiRouter.delete('/recordings/:id/report-sent', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    const recording = await prisma.recording.findUnique({
+      where: { id },
+    });
+
+    if (!recording) {
+      return res.status(404).json({ error: '録画が見つかりません' });
+    }
+
+    await prisma.recording.update({
+      where: { id },
+      data: { reportSentAt: null },
+    });
+
+    res.json({
+      success: true,
+      message: '送付ステータスをクリアしました',
+    });
+  } catch (error) {
+    console.error('Report sent clear error:', error);
+    res.status(500).json({ error: '送付ステータスのクリアに失敗しました' });
+  }
 });

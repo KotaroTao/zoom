@@ -12,6 +12,7 @@ import {
   createBriefSummaryPrompt,
   createBulletSummaryPrompt,
   createStructuredSummaryPrompt,
+  createComprehensiveSummaryPrompt,
 } from './prompts.js';
 import type { SummaryResult, SummaryOptions, StructuredSummary } from './types.js';
 
@@ -247,7 +248,7 @@ export async function summarizeLongText(
   transcript: string,
   options: SummaryOptions = {}
 ): Promise<SummaryResult> {
-  const chunkSize = 50000; // 約12,500トークン
+  const chunkSize = 20000; // 約5,000トークン（30,000 TPM制限対策）
 
   if (transcript.length <= chunkSize) {
     return generateSummary(transcript, options);
@@ -266,10 +267,15 @@ export async function summarizeLongText(
 
   logger.debug('チャンク数', { count: chunks.length });
 
-  // 各チャンクを要約
+  // 各チャンクを要約（レート制限対策で間隔を空ける）
   const chunkSummaries: string[] = [];
   for (let i = 0; i < chunks.length; i++) {
     logger.debug(`チャンク ${i + 1}/${chunks.length} を処理中`);
+
+    // 2番目以降のチャンクは5秒待機（レート制限対策）
+    if (i > 0) {
+      await new Promise(resolve => setTimeout(resolve, 5000));
+    }
 
     const result = await generateSummary(chunks[i], {
       ...options,
@@ -293,4 +299,131 @@ export async function summarizeLongText(
     `以下は長時間ミーティングを分割して要約したものです。全体を統合した最終要約を作成してください。\n\n${combinedSummary}`,
     options
   );
+}
+
+/**
+ * 包括的な詳細要約を生成（長文・詳細版）
+ */
+export async function generateComprehensiveSummary(
+  transcript: string,
+  options: SummaryOptions = {}
+): Promise<SummaryResult> {
+  logger.info('包括的詳細要約生成開始', {
+    textLength: transcript.length,
+    clientName: options.clientName,
+  });
+
+  const chunkSize = 15000; // より小さいチャンクで詳細に処理
+
+  try {
+    // 長いテキストは分割処理
+    if (transcript.length > chunkSize) {
+      const chunks: string[] = [];
+      for (let i = 0; i < transcript.length; i += chunkSize) {
+        chunks.push(transcript.substring(i, i + chunkSize));
+      }
+
+      logger.info('長文を分割して詳細要約生成', {
+        chunkCount: chunks.length,
+        chunkSize,
+      });
+
+      // 各チャンクの詳細要約を生成
+      const chunkSummaries: string[] = [];
+      for (let i = 0; i < chunks.length; i++) {
+        logger.debug(`詳細要約チャンク ${i + 1}/${chunks.length} を処理中`);
+
+        // レート制限対策
+        if (i > 0) {
+          await new Promise(resolve => setTimeout(resolve, 5000));
+        }
+
+        const prompt = createComprehensiveSummaryPrompt(chunks[i], {
+          ...options,
+          meetingTitle: `${options.meetingTitle || 'ミーティング'} パート${i + 1}/${chunks.length}`,
+        });
+
+        const openai = await getOpenAIClient();
+        const response = await openai.chat.completions.create({
+          model: config.openai.gptModel || 'gpt-4-turbo-preview',
+          messages: [
+            {
+              role: 'system',
+              content: 'あなたはビジネスミーティングの詳細な議事録を作成する専門家です。情報を省略せず、包括的で詳細な要約を作成してください。',
+            },
+            {
+              role: 'user',
+              content: prompt,
+            },
+          ],
+          temperature: 0.3,
+          max_tokens: 4000, // より多くのトークンを許可
+        });
+
+        const summary = response.choices[0]?.message?.content;
+        if (summary) {
+          chunkSummaries.push(`## パート${i + 1}\n\n${summary}`);
+        }
+      }
+
+      // すべてのチャンク要約を結合
+      const combinedSummary = chunkSummaries.join('\n\n---\n\n');
+
+      logger.info('包括的詳細要約生成完了', {
+        totalLength: combinedSummary.length,
+        chunkCount: chunks.length,
+      });
+
+      return {
+        success: true,
+        summary: combinedSummary,
+        keyPoints: [],
+        actionItems: [],
+      };
+    }
+
+    // 短いテキストはそのまま処理
+    const prompt = createComprehensiveSummaryPrompt(transcript, options);
+    const openai = await getOpenAIClient();
+
+    const response = await openai.chat.completions.create({
+      model: config.openai.gptModel || 'gpt-4-turbo-preview',
+      messages: [
+        {
+          role: 'system',
+          content: 'あなたはビジネスミーティングの詳細な議事録を作成する専門家です。情報を省略せず、包括的で詳細な要約を作成してください。',
+        },
+        {
+          role: 'user',
+          content: prompt,
+        },
+      ],
+      temperature: 0.3,
+      max_tokens: 4000,
+    });
+
+    const summary = response.choices[0]?.message?.content;
+    if (!summary) {
+      throw new Error('要約が生成されませんでした');
+    }
+
+    logger.info('包括的詳細要約生成完了', {
+      summaryLength: summary.length,
+    });
+
+    return {
+      success: true,
+      summary,
+      keyPoints: [],
+      actionItems: [],
+    };
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    logger.error('包括的詳細要約生成失敗', { error: errorMessage });
+
+    return {
+      success: false,
+      error: errorMessage,
+    };
+  }
 }
