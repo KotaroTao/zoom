@@ -19,6 +19,7 @@ import {
   X,
   UserPlus,
   Trash2,
+  Pencil,
 } from 'lucide-react';
 
 // basePath を考慮したAPI呼び出し用
@@ -74,9 +75,12 @@ export default function OrganizationsPage() {
 
   // モーダル状態
   const [showCreateOrg, setShowCreateOrg] = useState(false);
+  const [showEditOrg, setShowEditOrg] = useState(false);
+  const [showDeleteOrg, setShowDeleteOrg] = useState(false);
   const [showCreateTeam, setShowCreateTeam] = useState(false);
   const [showInviteMember, setShowInviteMember] = useState(false);
   const [newOrgName, setNewOrgName] = useState('');
+  const [editOrgName, setEditOrgName] = useState('');
   const [newTeamName, setNewTeamName] = useState('');
   const [newTeamDescription, setNewTeamDescription] = useState('');
   const [inviteEmail, setInviteEmail] = useState('');
@@ -219,7 +223,67 @@ export default function OrganizationsPage() {
     }
   };
 
+  // 組織編集モーダルを開く
+  const openEditOrg = () => {
+    if (selectedOrg) {
+      setEditOrgName(selectedOrg.name);
+      setShowEditOrg(true);
+    }
+  };
+
+  // 組織編集
+  const handleEditOrg = async () => {
+    if (!selectedOrg || !editOrgName.trim()) return;
+    setCreating(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/organizations/${selectedOrg.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: editOrgName }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setShowEditOrg(false);
+        await fetchOrganizations();
+        // 更新された組織を再選択
+        setSelectedOrg((prev) => prev ? { ...prev, name: editOrgName } : null);
+      } else {
+        alert(`組織更新エラー: ${data.error || res.statusText}`);
+      }
+    } catch (error) {
+      console.error('Failed to update organization:', error);
+      alert('組織の更新に失敗しました。');
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  // 組織削除
+  const handleDeleteOrg = async () => {
+    if (!selectedOrg) return;
+    setCreating(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/organizations/${selectedOrg.id}`, {
+        method: 'DELETE',
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setShowDeleteOrg(false);
+        setSelectedOrg(null);
+        await fetchOrganizations();
+      } else {
+        alert(`組織削除エラー: ${data.error || res.statusText}`);
+      }
+    } catch (error) {
+      console.error('Failed to delete organization:', error);
+      alert('組織の削除に失敗しました。');
+    } finally {
+      setCreating(false);
+    }
+  };
+
   const isAdmin = selectedOrg && ['owner', 'admin'].includes(selectedOrg.role);
+  const isOwner = selectedOrg && selectedOrg.role === 'owner';
 
   if (loading) {
     return (
@@ -314,9 +378,24 @@ export default function OrganizationsPage() {
                       </div>
                     </div>
                     {isAdmin && (
-                      <button className="p-2 text-gray-400 hover:text-gray-600">
-                        <Settings className="w-5 h-5" />
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={openEditOrg}
+                          className="p-2 text-gray-400 hover:text-blue-600 transition-colors"
+                          title="組織を編集"
+                        >
+                          <Pencil className="w-5 h-5" />
+                        </button>
+                        {isOwner && (
+                          <button
+                            onClick={() => setShowDeleteOrg(true)}
+                            className="p-2 text-gray-400 hover:text-red-600 transition-colors"
+                            title="組織を削除"
+                          >
+                            <Trash2 className="w-5 h-5" />
+                          </button>
+                        )}
+                      </div>
                     )}
                   </div>
                 </div>
@@ -610,6 +689,92 @@ export default function OrganizationsPage() {
                   className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50"
                 >
                   {creating ? '送信中...' : '招待を送信'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 組織編集モーダル */}
+      {showEditOrg && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold">組織を編集</h3>
+              <button onClick={() => setShowEditOrg(false)} className="text-gray-400 hover:text-gray-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">組織名</label>
+                <input
+                  type="text"
+                  value={editOrgName}
+                  onChange={(e) => setEditOrgName(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  placeholder="株式会社○○"
+                />
+              </div>
+              <div className="flex justify-end gap-3">
+                <button
+                  onClick={() => setShowEditOrg(false)}
+                  className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg"
+                >
+                  キャンセル
+                </button>
+                <button
+                  onClick={handleEditOrg}
+                  disabled={creating || !editOrgName.trim()}
+                  className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50"
+                >
+                  {creating ? '更新中...' : '更新'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 組織削除確認モーダル */}
+      {showDeleteOrg && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-red-600">組織を削除</h3>
+              <button onClick={() => setShowDeleteOrg(false)} className="text-gray-400 hover:text-gray-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="space-y-4">
+              <div className="p-4 bg-red-50 rounded-lg">
+                <p className="text-sm text-red-800">
+                  <strong>警告:</strong> この操作は取り消せません。
+                </p>
+                <p className="text-sm text-red-800 mt-2">
+                  組織「{selectedOrg?.name}」を削除すると、以下のデータも全て削除されます：
+                </p>
+                <ul className="text-sm text-red-800 mt-2 list-disc list-inside">
+                  <li>全てのチーム</li>
+                  <li>全ての録画データ</li>
+                  <li>全てのメンバーシップ</li>
+                  <li>全ての設定</li>
+                </ul>
+              </div>
+              <div className="flex justify-end gap-3">
+                <button
+                  onClick={() => setShowDeleteOrg(false)}
+                  className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg"
+                >
+                  キャンセル
+                </button>
+                <button
+                  onClick={handleDeleteOrg}
+                  disabled={creating}
+                  className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
+                >
+                  {creating ? '削除中...' : '削除する'}
                 </button>
               </div>
             </div>
