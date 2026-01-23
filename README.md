@@ -665,12 +665,13 @@ pm2 logs --lines 50
 - ✅ 録画ダウンロード
 - ✅ YouTubeアップロード
 - ✅ Whisper文字起こし
-- ✅ GPT要約生成
+- ✅ GPT要約生成（通常要約・詳細要約）
 - ✅ Google Sheets同期
 - ✅ Notion同期
 - ✅ マルチテナント対応
 - ✅ ダッシュボード認証情報設定
 - ✅ 組織作成・オンボーディング
+- ✅ クライアント向け報告書生成
 - ✅ 詳細要約（長文・包括的要約）機能
 - ✅ 文字起こし全文表示機能
 - ✅ 報告書送付ステータス追跡機能
@@ -752,6 +753,187 @@ b7b7218 feat: 詳細要約ステータス追跡（GENERATING/COMPLETED/FAILED）
 f17a89d feat: 要約モーダルにタブ追加（要約・文字起こし・詳細要約）
 c0e6280 feat: 詳細要約（長文・包括的要約）機能を追加
 993b36e fix: 要約チャンクサイズを20,000文字に縮小（30,000 TPM制限対策）
+```
+
+---
+
+## データベース管理（本番環境）
+
+### データベース構成
+
+| 項目 | 値 |
+|------|-----|
+| DB種別 | SQLite |
+| ファイルパス | `/var/www/zoom/dashboard/prisma/data.db` |
+| スキーマファイル | `/var/www/zoom/prisma/schema.prisma` |
+| バックアップ保存先 | `/var/www/zoom-backups/` |
+
+### 主要テーブル
+
+| テーブル | 説明 |
+|---------|------|
+| Organization | 組織（テナント）情報 |
+| User | ユーザー情報 |
+| OrganizationMember | 組織メンバーシップ（多対多） |
+| Recording | 録画レコード |
+| Settings | 組織ごとのAPI認証情報 |
+| Client | クライアントマスタ |
+| ClientContact | クライアント連絡先（複数可） |
+| ReportTemplate | レポートテンプレート |
+| ProcessLog | 処理ログ |
+| Invitation | 招待情報 |
+
+### Recording テーブルの主要フィールド（2026年1月版）
+
+```
+id, organizationId, zoomMeetingId, title, hostEmail, duration, meetingDate, zoomUrl
+clientName, youtubeVideoId, youtubeUrl
+transcript        -- 文字起こし全文
+summary           -- 要約テキスト
+detailedSummary   -- 詳細要約（長文版）
+detailedSummaryStatus -- 詳細要約ステータス: GENERATING, COMPLETED, FAILED
+clientReport      -- クライアント向け報告書
+reportSentAt      -- 報告書送付日時
+status            -- PENDING, DOWNLOADING, UPLOADING, TRANSCRIBING, SUMMARIZING, SYNCING, COMPLETED, FAILED
+```
+
+### バックアップ運用
+
+#### 自動バックアップ（推奨設定）
+
+```bash
+# /etc/cron.daily/zoom-backup または crontab に追加
+#!/bin/bash
+BACKUP_DIR="/var/www/zoom-backups/$(date +%Y%m%d_%H%M%S)"
+mkdir -p "$BACKUP_DIR"
+cp /var/www/zoom/dashboard/prisma/data.db "$BACKUP_DIR/"
+# 30日以上前のバックアップを削除
+find /var/www/zoom-backups -type d -mtime +30 -exec rm -rf {} \;
+```
+
+#### 手動バックアップ
+
+```bash
+# バックアップ作成
+BACKUP_DIR="/var/www/zoom-backups/$(date +%Y%m%d_%H%M%S)"
+mkdir -p "$BACKUP_DIR"
+cp /var/www/zoom/dashboard/prisma/data.db "$BACKUP_DIR/"
+```
+
+### データベース復旧手順
+
+#### 1. バックアップ一覧を確認
+
+```bash
+ls -la /var/www/zoom-backups/
+```
+
+#### 2. バックアップからリストア
+
+```bash
+# サービス停止（推奨）
+pm2 stop zoom-backend zoom-dashboard
+
+# リストア
+cp /var/www/zoom-backups/YYYYMMDD_HHMMSS/data.db /var/www/zoom/dashboard/prisma/data.db
+
+# スキーマを同期（新しいカラムを追加）
+cd /var/www/zoom/dashboard
+DATABASE_URL="file:/var/www/zoom/dashboard/prisma/data.db" npx prisma db push --accept-data-loss
+
+# Prismaクライアント再生成
+npx prisma generate
+
+# バックエンドも再生成
+cd /var/www/zoom
+DATABASE_URL="file:/var/www/zoom/dashboard/prisma/data.db" npx prisma generate
+
+# サービス再起動
+pm2 restart zoom-backend zoom-dashboard
+```
+
+#### 3. データ確認
+
+```bash
+# 組織数を確認
+sqlite3 /var/www/zoom/dashboard/prisma/data.db "SELECT COUNT(*) FROM Organization;"
+
+# 録画数を確認
+sqlite3 /var/www/zoom/dashboard/prisma/data.db "SELECT COUNT(*) FROM Recording;"
+
+# 設定の確認
+sqlite3 /var/www/zoom/dashboard/prisma/data.db "SELECT id, organizationId FROM Settings;"
+```
+
+### スキーママイグレーション
+
+#### 新しいカラムを追加する場合
+
+```bash
+# 方法1: Prisma db push（推奨）
+cd /var/www/zoom/dashboard
+DATABASE_URL="file:/var/www/zoom/dashboard/prisma/data.db" npx prisma db push --accept-data-loss
+
+# 方法2: 手動でALTER TABLE
+sqlite3 /var/www/zoom/dashboard/prisma/data.db "ALTER TABLE Recording ADD COLUMN newColumn TEXT;"
+```
+
+#### Prismaクライアント再生成
+
+```bash
+# ダッシュボード（Next.js）用
+cd /var/www/zoom/dashboard
+npx prisma generate
+
+# バックエンド（Express）用
+cd /var/www/zoom
+DATABASE_URL="file:/var/www/zoom/dashboard/prisma/data.db" npx prisma generate
+```
+
+### PM2プロセス一覧
+
+```bash
+pm2 list
+# 期待される出力:
+# ┌─────┬──────────────────┬─────┬───────┬────────┐
+# │ id  │ name             │ mode│ status│ cpu    │
+# ├─────┼──────────────────┼─────┼───────┼────────┤
+# │ 0   │ zoom-backend     │ fork│ online│ 0%     │
+# │ 1   │ zoom-dashboard   │ fork│ online│ 0%     │
+# └─────┴──────────────────┴─────┴───────┴────────┘
+```
+
+### ログ確認
+
+```bash
+# 全ログ
+pm2 logs
+
+# バックエンドのみ
+pm2 logs zoom-backend --lines 100
+
+# ダッシュボードのみ
+pm2 logs zoom-dashboard --lines 100
+
+# エラーのみ
+pm2 logs --err
+```
+
+---
+
+## 安定版タグ一覧
+
+| タグ | 日付 | 説明 |
+|------|------|------|
+| `v1.0.0-stable-20260120` | 2026/01/20 | 初期安定版 |
+| `v1.1.0-stable-20260123` | 2026/01/23 | 詳細要約・報告書送付追跡機能追加 |
+
+```bash
+# 安定版に戻す場合
+git checkout v1.1.0-stable-20260123
+npm run build
+cd dashboard && npm run build && cd ..
+pm2 restart zoom-backend zoom-dashboard
 ```
 
 ## ライセンス
