@@ -4,7 +4,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
-import { getAuthContext, unauthorizedResponse } from '@/lib/api-auth';
+import { getAuthContext, unauthorizedResponse, noOrganizationResponse } from '@/lib/api-auth';
 
 export async function GET(request: NextRequest) {
   const auth = await getAuthContext();
@@ -97,8 +97,12 @@ export async function PUT(request: NextRequest) {
     return unauthorizedResponse();
   }
 
+  const { organizationId } = auth;
+  if (!organizationId) {
+    return noOrganizationResponse();
+  }
+
   try {
-    const { organizationId } = auth;
     const body = await request.json();
     const { id, title, clientName } = body;
 
@@ -153,8 +157,12 @@ export async function DELETE(request: NextRequest) {
     return unauthorizedResponse();
   }
 
+  const { organizationId } = auth;
+  if (!organizationId) {
+    return noOrganizationResponse();
+  }
+
   try {
-    const { organizationId } = auth;
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
 
