@@ -58,6 +58,23 @@ interface Member {
   joinedAt: string;
 }
 
+interface MemberDetail {
+  id: string;
+  userId: string;
+  email: string;
+  name: string | null;
+  image: string | null;
+  role: string;
+  teams: { id: string; name: string; color: string | null; role: string }[];
+}
+
+interface TeamOption {
+  id: string;
+  name: string;
+  color: string | null;
+  isDefault: boolean;
+}
+
 const roleLabels: Record<string, { label: string; icon: typeof Crown; color: string }> = {
   owner: { label: 'オーナー', icon: Crown, color: 'text-yellow-600 bg-yellow-50' },
   admin: { label: '管理者', icon: Shield, color: 'text-blue-600 bg-blue-50' },
@@ -79,6 +96,8 @@ export default function OrganizationsPage() {
   const [showDeleteOrg, setShowDeleteOrg] = useState(false);
   const [showCreateTeam, setShowCreateTeam] = useState(false);
   const [showInviteMember, setShowInviteMember] = useState(false);
+  const [showEditMember, setShowEditMember] = useState(false);
+  const [showDeleteMember, setShowDeleteMember] = useState(false);
   const [newOrgName, setNewOrgName] = useState('');
   const [editOrgName, setEditOrgName] = useState('');
   const [newTeamName, setNewTeamName] = useState('');
@@ -86,6 +105,12 @@ export default function OrganizationsPage() {
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteRole, setInviteRole] = useState('member');
   const [creating, setCreating] = useState(false);
+
+  // メンバー編集用
+  const [selectedMember, setSelectedMember] = useState<MemberDetail | null>(null);
+  const [allTeamOptions, setAllTeamOptions] = useState<TeamOption[]>([]);
+  const [editMemberRole, setEditMemberRole] = useState('');
+  const [editMemberTeams, setEditMemberTeams] = useState<string[]>([]);
 
   // 組織一覧を取得
   const fetchOrganizations = async () => {
@@ -280,6 +305,104 @@ export default function OrganizationsPage() {
     } finally {
       setCreating(false);
     }
+  };
+
+  // メンバー編集モーダルを開く
+  const openEditMember = async (member: Member) => {
+    try {
+      const res = await fetch(`${API_BASE}/api/organizations/members/${member.id}`);
+      if (res.ok) {
+        const data = await res.json();
+        setSelectedMember(data.member);
+        setAllTeamOptions(data.allTeams);
+        setEditMemberRole(data.member.role);
+        setEditMemberTeams(data.member.teams.map((t: { id: string }) => t.id));
+        setShowEditMember(true);
+      } else {
+        alert('メンバー情報の取得に失敗しました');
+      }
+    } catch (error) {
+      console.error('Failed to fetch member:', error);
+      alert('メンバー情報の取得に失敗しました');
+    }
+  };
+
+  // メンバー情報を更新
+  const handleEditMember = async () => {
+    if (!selectedMember) return;
+    setCreating(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/organizations/members/${selectedMember.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          role: editMemberRole,
+          teamIds: editMemberTeams,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setShowEditMember(false);
+        setSelectedMember(null);
+        await fetchMembers();
+        await fetchTeams();
+      } else {
+        alert(`メンバー更新エラー: ${data.error || res.statusText}`);
+      }
+    } catch (error) {
+      console.error('Failed to update member:', error);
+      alert('メンバーの更新に失敗しました');
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  // メンバー削除確認を開く
+  const openDeleteMember = (member: Member) => {
+    setSelectedMember({
+      id: member.id,
+      userId: member.userId,
+      email: member.email,
+      name: member.name,
+      image: member.image,
+      role: member.role,
+      teams: [],
+    });
+    setShowDeleteMember(true);
+  };
+
+  // メンバーを削除
+  const handleDeleteMember = async () => {
+    if (!selectedMember) return;
+    setCreating(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/organizations/members/${selectedMember.id}`, {
+        method: 'DELETE',
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setShowDeleteMember(false);
+        setSelectedMember(null);
+        await fetchMembers();
+        await fetchOrganizations();
+      } else {
+        alert(`メンバー削除エラー: ${data.error || res.statusText}`);
+      }
+    } catch (error) {
+      console.error('Failed to delete member:', error);
+      alert('メンバーの削除に失敗しました');
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  // チーム選択をトグル
+  const toggleTeamSelection = (teamId: string) => {
+    setEditMemberTeams((prev) =>
+      prev.includes(teamId)
+        ? prev.filter((id) => id !== teamId)
+        : [...prev, teamId]
+    );
   };
 
   const isAdmin = selectedOrg && ['owner', 'admin'].includes(selectedOrg.role);
@@ -528,10 +651,25 @@ export default function OrganizationsPage() {
                                 })()}
                                 {roleLabels[member.role].label}
                               </span>
-                              {isAdmin && member.role !== 'owner' && (
-                                <button className="p-1 text-gray-400 hover:text-red-500">
-                                  <Trash2 className="w-4 h-4" />
-                                </button>
+                              {isAdmin && (
+                                <>
+                                  <button
+                                    onClick={() => openEditMember(member)}
+                                    className="p-1 text-gray-400 hover:text-blue-600"
+                                    title="メンバーを編集"
+                                  >
+                                    <Pencil className="w-4 h-4" />
+                                  </button>
+                                  {member.role !== 'owner' && (
+                                    <button
+                                      onClick={() => openDeleteMember(member)}
+                                      className="p-1 text-gray-400 hover:text-red-500"
+                                      title="メンバーを削除"
+                                    >
+                                      <Trash2 className="w-4 h-4" />
+                                    </button>
+                                  )}
+                                </>
                               )}
                             </div>
                           </div>
@@ -771,6 +909,159 @@ export default function OrganizationsPage() {
                 </button>
                 <button
                   onClick={handleDeleteOrg}
+                  disabled={creating}
+                  className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
+                >
+                  {creating ? '削除中...' : '削除する'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* メンバー編集モーダル */}
+      {showEditMember && selectedMember && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold">メンバーを編集</h3>
+              <button onClick={() => setShowEditMember(false)} className="text-gray-400 hover:text-gray-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="space-y-4">
+              {/* メンバー情報 */}
+              <div className="p-3 bg-gray-50 rounded-lg">
+                <div className="flex items-center gap-3">
+                  {selectedMember.image ? (
+                    <img src={selectedMember.image} alt="" className="w-10 h-10 rounded-full" />
+                  ) : (
+                    <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center">
+                      <User className="w-5 h-5 text-gray-500" />
+                    </div>
+                  )}
+                  <div>
+                    <p className="font-medium">{selectedMember.name || '名前未設定'}</p>
+                    <p className="text-sm text-gray-500">{selectedMember.email}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* 権限選択 */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">組織内の権限</label>
+                <select
+                  value={editMemberRole}
+                  onChange={(e) => setEditMemberRole(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  disabled={selectedMember.role === 'owner' && selectedOrg?.role !== 'owner'}
+                >
+                  <option value="owner">オーナー</option>
+                  <option value="admin">管理者</option>
+                  <option value="member">メンバー</option>
+                  <option value="viewer">閲覧のみ</option>
+                </select>
+                <p className="text-xs text-gray-500 mt-1">
+                  オーナー: 全権限 / 管理者: メンバー・チーム管理 / メンバー: 録画管理 / 閲覧のみ: 閲覧のみ
+                </p>
+              </div>
+
+              {/* チーム所属 */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">所属チーム</label>
+                {allTeamOptions.length === 0 ? (
+                  <p className="text-sm text-gray-500">チームがありません</p>
+                ) : (
+                  <div className="space-y-2 max-h-40 overflow-y-auto">
+                    {allTeamOptions.map((team) => (
+                      <label
+                        key={team.id}
+                        className="flex items-center gap-3 p-2 rounded hover:bg-gray-50 cursor-pointer"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={editMemberTeams.includes(team.id)}
+                          onChange={() => toggleTeamSelection(team.id)}
+                          className="w-4 h-4 text-primary-600 rounded focus:ring-primary-500"
+                        />
+                        <span
+                          className="w-3 h-3 rounded-full"
+                          style={{ backgroundColor: team.color || '#6B7280' }}
+                        />
+                        <span className="text-sm">{team.name}</span>
+                        {team.isDefault && (
+                          <span className="text-xs text-gray-400">(デフォルト)</span>
+                        )}
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="flex justify-end gap-3 pt-2">
+                <button
+                  onClick={() => setShowEditMember(false)}
+                  className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg"
+                >
+                  キャンセル
+                </button>
+                <button
+                  onClick={handleEditMember}
+                  disabled={creating}
+                  className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50"
+                >
+                  {creating ? '更新中...' : '更新'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* メンバー削除確認モーダル */}
+      {showDeleteMember && selectedMember && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-red-600">メンバーを削除</h3>
+              <button onClick={() => setShowDeleteMember(false)} className="text-gray-400 hover:text-gray-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="space-y-4">
+              <div className="p-3 bg-gray-50 rounded-lg">
+                <div className="flex items-center gap-3">
+                  {selectedMember.image ? (
+                    <img src={selectedMember.image} alt="" className="w-10 h-10 rounded-full" />
+                  ) : (
+                    <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center">
+                      <User className="w-5 h-5 text-gray-500" />
+                    </div>
+                  )}
+                  <div>
+                    <p className="font-medium">{selectedMember.name || '名前未設定'}</p>
+                    <p className="text-sm text-gray-500">{selectedMember.email}</p>
+                  </div>
+                </div>
+              </div>
+              <div className="p-4 bg-red-50 rounded-lg">
+                <p className="text-sm text-red-800">
+                  このメンバーを組織から削除しますか？
+                </p>
+                <p className="text-sm text-red-800 mt-2">
+                  削除されたメンバーは、この組織のリソースにアクセスできなくなります。
+                </p>
+              </div>
+              <div className="flex justify-end gap-3">
+                <button
+                  onClick={() => setShowDeleteMember(false)}
+                  className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg"
+                >
+                  キャンセル
+                </button>
+                <button
+                  onClick={handleDeleteMember}
                   disabled={creating}
                   className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
                 >
