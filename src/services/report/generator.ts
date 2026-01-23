@@ -243,6 +243,14 @@ export async function generateClientReport(
         };
       }
     } else {
+      // organizationIdがnullの場合（個人利用モード）はテンプレート非対応
+      if (!recording.organizationId) {
+        return {
+          success: false,
+          error: '個人利用モードではテンプレートを使用できません。テンプレートIDを指定してください。',
+        };
+      }
+
       // デフォルトテンプレートを取得
       template = await prisma.reportTemplate.findFirst({
         where: {

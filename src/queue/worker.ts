@@ -113,33 +113,40 @@ async function processRecording(job: Job<ProcessingJob>): Promise<void> {
     }
     const organizationId = firstOrg.id;
 
-    // DBに録画レコードを作成/更新
-    const dbRecording = await prisma.recording.upsert({
+    // DBに録画レコードを作成/更新（findFirst + create/update パターン）
+    let dbRecording = await prisma.recording.findFirst({
       where: {
-        organizationId_zoomMeetingId: {
-          organizationId,
-          zoomMeetingId,
-        },
-      },
-      create: {
         organizationId,
         zoomMeetingId,
-        zoomMeetingUuid: job.data.zoomMeetingUuid,
-        title,
-        hostEmail,
-        duration,
-        meetingDate: meetingDate ? new Date(meetingDate) : new Date(),
-        zoomUrl,
-        clientName,
-        status: 'DOWNLOADING',
-      },
-      update: {
-        title,
-        hostEmail,
-        duration,
-        status: 'DOWNLOADING',
       },
     });
+
+    if (dbRecording) {
+      dbRecording = await prisma.recording.update({
+        where: { id: dbRecording.id },
+        data: {
+          title,
+          hostEmail,
+          duration,
+          status: 'DOWNLOADING',
+        },
+      });
+    } else {
+      dbRecording = await prisma.recording.create({
+        data: {
+          organizationId,
+          zoomMeetingId,
+          zoomMeetingUuid: job.data.zoomMeetingUuid,
+          title,
+          hostEmail,
+          duration,
+          meetingDate: meetingDate ? new Date(meetingDate) : new Date(),
+          zoomUrl,
+          clientName,
+          status: 'DOWNLOADING',
+        },
+      });
+    }
     dbRecordingId = dbRecording.id;
     logger.info('DB録画レコード作成/更新', { dbRecordingId });
     // ==============================

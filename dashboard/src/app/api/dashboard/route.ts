@@ -109,7 +109,7 @@ export async function GET() {
     };
 
     // 今週のクライアント活動を整形
-    const weeklyClients = weeklyClientActivity.map((item) => ({
+    const weeklyClients = weeklyClientActivity.map((item: { clientName: string | null; _count: { id: number } }) => ({
       clientName: item.clientName,
       recordingCount: item._count.id,
     }));

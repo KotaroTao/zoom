@@ -136,7 +136,7 @@ export async function POST(request: NextRequest) {
     const invitation = await prisma.invitation.create({
       data: {
         email,
-        role,
+        orgRole: role,
         token,
         expiresAt,
         invitedById: userId,
@@ -156,7 +156,7 @@ export async function POST(request: NextRequest) {
       invitation: {
         id: invitation.id,
         email: invitation.email,
-        role: invitation.role,
+        role: invitation.orgRole,
         expiresAt: invitation.expiresAt,
         inviteUrl,
         organizationName: invitation.organization.name,

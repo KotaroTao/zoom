@@ -42,7 +42,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
     return NextResponse.json({
       email: invitation.email,
-      role: invitation.role,
+      role: invitation.orgRole,
       organizationName: invitation.organization.name,
       invitedBy: invitation.invitedBy.name,
       expiresAt: invitation.expiresAt,
@@ -127,7 +127,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         data: {
           userId: session.user.id,
           organizationId: invitation.organizationId,
-          role: invitation.role,
+          role: invitation.orgRole,
         },
       }),
       prisma.invitation.delete({ where: { id: invitation.id } }),
