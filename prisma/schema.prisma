@@ -98,6 +98,7 @@ model Invitation {
   role           String   @default("member")
   token          String   @unique
   expiresAt      DateTime
+  status         String   @default("pending") // pending, accepted, expired
 
   // 招待者
   invitedById    String
@@ -111,6 +112,7 @@ model Invitation {
 
   @@index([email])
   @@index([organizationId])
+  @@index([status])
 }
 
 // -------------------------------------------
