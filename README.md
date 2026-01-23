@@ -659,7 +659,7 @@ pm2 restart zoom-backend zoom-dashboard
 pm2 logs --lines 50
 ```
 
-### 動作確認済み機能（2026年1月20日）
+### 動作確認済み機能（2026年1月23日）
 
 - ✅ Zoom録画Webhook受信
 - ✅ 録画ダウンロード
@@ -671,10 +671,88 @@ pm2 logs --lines 50
 - ✅ マルチテナント対応
 - ✅ ダッシュボード認証情報設定
 - ✅ 組織作成・オンボーディング
+- ✅ 詳細要約（長文・包括的要約）機能
+- ✅ 文字起こし全文表示機能
+- ✅ 報告書送付ステータス追跡機能
+- ✅ 詳細要約ステータス追跡（GENERATING/COMPLETED/FAILED）
 
 ### 開発ブランチ
 
-メイン開発ブランチ: `claude/zoom-recording-system-E63fd`
+メイン開発ブランチ: `claude/continue-after-readme-EDdXs`
+
+### 最新の変更（2026年1月23日）
+
+#### 詳細要約機能
+- `detailedSummary` フィールド: 長文の包括的な要約を保存
+- `detailedSummaryStatus` フィールド: 生成状態（GENERATING/COMPLETED/FAILED）を追跡
+- バックグラウンド処理でページ離脱後も生成継続
+- 10秒ポーリングで自動更新
+
+#### 報告書送付ステータス追跡機能
+- `reportSentAt` フィールド: 報告書送付日時を記録
+- 録画一覧に送付ステータスアイコン表示（クリックで切り替え可能）
+- 報告書モーダルで連絡先（LINE等）クリック時に自動で送付済みに設定
+
+#### タブ付き要約モーダル
+- 「要約」「文字起こし」「詳細要約」の3タブ構成
+- 文字起こし全文表示（追加コストなし、既に保存済み）
+- 詳細要約の生成・表示・再生成機能
+
+#### OpenAI API制限対策
+- チャンクサイズを20,000文字に縮小（30,000 TPM制限対策）
+- チャンク間に5秒の遅延を追加
+- 要約失敗時のステータス表示修正
+
+### 主要ファイル（最新機能関連）
+
+| ファイル | 説明 |
+|---------|------|
+| `prisma/schema.prisma` | `detailedSummary`, `detailedSummaryStatus`, `reportSentAt` フィールド |
+| `src/server/routes/api.ts` | 詳細要約・報告書送付APIエンドポイント |
+| `src/services/summary/openai.ts` | `generateComprehensiveSummary` 関数 |
+| `src/services/summary/prompts.ts` | `createComprehensiveSummaryPrompt` 関数 |
+| `dashboard/src/app/recordings/page.tsx` | タブ付きモーダル、送付ステータスアイコン |
+| `dashboard/src/app/api/recordings/[id]/detailed-summary/route.ts` | 詳細要約APIルート |
+| `dashboard/src/app/api/recordings/[id]/report-sent/route.ts` | 送付ステータスAPIルート |
+| `dashboard/src/lib/api.ts` | フロントエンドAPI関数 |
+
+### デプロイ手順（最新）
+
+```bash
+# 1. VPSにSSH
+ssh user@tao-dx.com
+
+# 2. プロジェクトディレクトリに移動
+cd /var/www/zoom
+
+# 3. コードを取得（現在のブランチ）
+git pull origin claude/continue-after-readme-EDdXs
+
+# 4. データベーススキーマを適用
+npx prisma db push
+
+# 5. バックエンドビルド＆再起動
+npm run build
+pm2 restart zoom-backend
+
+# 6. ダッシュボードビルド＆再起動
+cd dashboard
+npm run build
+pm2 restart zoom-dashboard
+
+# 7. ログ確認
+pm2 logs --lines 50
+```
+
+### 最近のコミット履歴
+
+```
+373b0ed feat: 報告書送付ステータス追跡機能
+b7b7218 feat: 詳細要約ステータス追跡（GENERATING/COMPLETED/FAILED）
+f17a89d feat: 要約モーダルにタブ追加（要約・文字起こし・詳細要約）
+c0e6280 feat: 詳細要約（長文・包括的要約）機能を追加
+993b36e fix: 要約チャンクサイズを20,000文字に縮小（30,000 TPM制限対策）
+```
 
 ## ライセンス
 
