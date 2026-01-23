@@ -12,6 +12,7 @@ export interface AuthContext {
   userId: string;
   organizationId: string;
   role: string;
+  userOrganization?: string | null;  // ユーザーの組織タグ（共有用）
 }
 
 /**
@@ -25,12 +26,25 @@ export async function getAuthContext(): Promise<AuthContext | null> {
     return null;
   }
 
+  // ユーザーの組織タグを取得
+  let userOrganization: string | null = null;
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: session.user.id },
+      select: { organization: true },
+    });
+    userOrganization = user?.organization || null;
+  } catch (error) {
+    console.error('[API-AUTH] Failed to fetch user organization:', error);
+  }
+
   // セッションに組織情報がある場合はそのまま使用
   if (session.user.organizationId) {
     return {
       userId: session.user.id,
       organizationId: session.user.organizationId,
       role: session.user.role || 'member',
+      userOrganization,
     };
   }
 
@@ -46,6 +60,7 @@ export async function getAuthContext(): Promise<AuthContext | null> {
         userId: session.user.id,
         organizationId: membership.organizationId,
         role: membership.role,
+        userOrganization,
       };
     }
   } catch (error) {

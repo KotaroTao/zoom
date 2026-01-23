@@ -13,7 +13,7 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const { organizationId } = auth;
+    const { organizationId, userOrganization, userId } = auth;
     const { searchParams } = new URL(request.url);
 
     const limit = parseInt(searchParams.get('limit') || '20');
@@ -21,7 +21,34 @@ export async function GET(request: NextRequest) {
     const clientName = searchParams.get('client');
     const status = searchParams.get('status');
 
-    const where: Record<string, unknown> = { organizationId };
+    // 基本条件：自分の組織の録画
+    const baseConditions: Record<string, unknown>[] = [{ organizationId }];
+
+    // 組織タグが設定されている場合、同じ組織タグを持つユーザーの録画も含める
+    if (userOrganization) {
+      // 同じ組織タグを持つユーザーIDを取得
+      const usersWithSameOrg = await prisma.user.findMany({
+        where: {
+          organization: userOrganization,
+          id: { not: userId }, // 自分以外
+        },
+        select: { id: true },
+      });
+
+      if (usersWithSameOrg.length > 0) {
+        const userIds = usersWithSameOrg.map((u: { id: string }) => u.id);
+        baseConditions.push({
+          createdByUserId: { in: userIds },
+        });
+      }
+    }
+
+    // OR条件で結合
+    const where: Record<string, unknown> = {
+      OR: baseConditions,
+    };
+
+    // 追加フィルター
     if (clientName) where.clientName = clientName;
     if (status) where.status = status;
 
@@ -31,6 +58,11 @@ export async function GET(request: NextRequest) {
         orderBy: { meetingDate: 'desc' },
         take: limit,
         skip: offset,
+        include: {
+          createdByUser: {
+            select: { id: true, name: true, email: true },
+          },
+        },
       }),
       prisma.recording.count({ where }),
     ]);

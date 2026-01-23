@@ -53,12 +53,18 @@ model User {
   // メール認証
   emailVerified DateTime?
 
+  // シンプル組織タグ（同じ値のユーザー間で録画を共有）
+  organization  String?
+
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
   // リレーション
   memberships   OrganizationMember[]
   invitationsSent Invitation[] @relation("InvitationSender")
+  recordings    Recording[] @relation("RecordingCreator")
+
+  @@index([organization])
 }
 
 // -------------------------------------------
@@ -117,6 +123,10 @@ model Recording {
   organizationId  String
   organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
+  // 作成者ユーザー（組織共有用）
+  createdByUserId String?
+  createdByUser   User?    @relation("RecordingCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
+
   // Zoom情報
   zoomMeetingId   String
   zoomMeetingUuid String?
@@ -174,6 +184,7 @@ model Recording {
   // インデックス
   @@unique([organizationId, zoomMeetingId])
   @@index([organizationId])
+  @@index([createdByUserId])
   @@index([clientName])
   @@index([status])
   @@index([meetingDate])

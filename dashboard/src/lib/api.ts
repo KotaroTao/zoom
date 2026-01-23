@@ -67,6 +67,13 @@ export interface Recording {
   notionPageId: string | null;
   createdAt: string;
   updatedAt: string;
+  // 組織共有関連
+  createdByUserId?: string | null;
+  createdByUser?: {
+    id: string;
+    name: string | null;
+    email: string;
+  } | null;
 }
 
 export interface RecordingsResponse {
@@ -577,4 +584,32 @@ export const api = {
       `/recordings/${recordingId}/report-sent`,
       { method: 'DELETE' }
     ),
+
+  // =============================================
+  // ユーザー組織タグ API
+  // =============================================
+
+  /**
+   * ユーザーの組織タグを取得
+   */
+  getUserOrganization: () =>
+    fetchApi<{ organization: string | null }>('/user/organization'),
+
+  /**
+   * ユーザーの組織タグを更新
+   */
+  updateUserOrganization: (organization: string | null) =>
+    fetchApi<{ success: boolean; organization: string | null }>('/user/organization', {
+      method: 'PUT',
+      body: JSON.stringify({ organization }),
+    }),
+
+  /**
+   * 同じ組織タグを持つメンバー一覧を取得
+   */
+  getOrganizationMembers: () =>
+    fetchApi<{
+      members: { id: string; name: string | null; email: string }[];
+      organization: string | null;
+    }>('/user/organization/members'),
 };
