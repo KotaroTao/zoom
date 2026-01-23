@@ -5,7 +5,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
-import { getAuthContext, unauthorizedResponse } from '@/lib/api-auth';
+import { getAuthContext, unauthorizedResponse, noOrganizationResponse } from '@/lib/api-auth';
 
 interface ContactInfo {
   id?: string;
@@ -36,9 +36,12 @@ export async function GET() {
     return unauthorizedResponse();
   }
 
-  try {
-    const { organizationId } = auth;
+  const { organizationId } = auth;
+  if (!organizationId) {
+    return NextResponse.json({ clients: [] });
+  }
 
+  try {
     // 登録済みクライアントを取得（連絡先も含む）
     const registeredClients = await prisma.client.findMany({
       where: { organizationId },
@@ -150,8 +153,12 @@ export async function POST(request: NextRequest) {
     return unauthorizedResponse();
   }
 
+  const { organizationId } = auth;
+  if (!organizationId) {
+    return noOrganizationResponse();
+  }
+
   try {
-    const { organizationId } = auth;
     const body = await request.json();
     const { name, description, color, zoomUrl, contactUrl, contactType, contacts } = body;
 
@@ -222,8 +229,12 @@ export async function PUT(request: NextRequest) {
     return unauthorizedResponse();
   }
 
+  const { organizationId } = auth;
+  if (!organizationId) {
+    return noOrganizationResponse();
+  }
+
   try {
-    const { organizationId } = auth;
     const body = await request.json();
     const { id, name, description, color, zoomUrl, contactUrl, contactType, contacts, isActive } = body;
 
@@ -306,8 +317,12 @@ export async function DELETE(request: NextRequest) {
     return unauthorizedResponse();
   }
 
+  const { organizationId } = auth;
+  if (!organizationId) {
+    return noOrganizationResponse();
+  }
+
   try {
-    const { organizationId } = auth;
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
 

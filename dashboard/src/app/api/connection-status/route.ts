@@ -12,9 +12,19 @@ export async function GET() {
     return unauthorizedResponse();
   }
 
-  try {
-    const { organizationId } = auth;
+  const { organizationId } = auth;
 
+  // 組織未所属の場合は未設定ステータスを返す
+  if (!organizationId) {
+    return NextResponse.json({
+      zoom: { connected: false, message: '組織未所属', configured: false },
+      youtube: { connected: false, message: '組織未所属', configured: false },
+      openai: { connected: false, message: '組織未所属', configured: false },
+      notion: { connected: false, message: '組織未所属', configured: false },
+    });
+  }
+
+  try {
     const settings = await prisma.settings.findUnique({
       where: { organizationId },
     });

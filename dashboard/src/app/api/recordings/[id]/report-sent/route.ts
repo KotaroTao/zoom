@@ -4,7 +4,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
-import { getAuthContext, unauthorizedResponse } from '@/lib/api-auth';
+import { getAuthContext, unauthorizedResponse, noOrganizationResponse } from '@/lib/api-auth';
 
 // 報告書を送付済みにする
 export async function POST(
@@ -16,8 +16,12 @@ export async function POST(
     return unauthorizedResponse();
   }
 
+  const { organizationId } = auth;
+  if (!organizationId) {
+    return noOrganizationResponse();
+  }
+
   try {
-    const { organizationId } = auth;
     const { id } = await params;
 
     const recording = await prisma.recording.findFirst({
@@ -61,8 +65,12 @@ export async function DELETE(
     return unauthorizedResponse();
   }
 
+  const { organizationId } = auth;
+  if (!organizationId) {
+    return noOrganizationResponse();
+  }
+
   try {
-    const { organizationId } = auth;
     const { id } = await params;
 
     const recording = await prisma.recording.findFirst({

@@ -12,9 +12,17 @@ export async function GET() {
     return unauthorizedResponse();
   }
 
-  try {
-    const { organizationId } = auth;
+  const { organizationId } = auth;
+  if (!organizationId) {
+    return NextResponse.json({
+      actionItems: { failed: [], noClient: [], noSummary: [], counts: { failed: 0, noClient: 0, noSummary: 0 } },
+      todaysRecordings: [],
+      weeklyClients: [],
+      stats: { totalRecordings: 0, completedCount: 0, completionRate: 0 },
+    });
+  }
 
+  try {
     // 今日の開始時刻
     const today = new Date();
     today.setHours(0, 0, 0, 0);

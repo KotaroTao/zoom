@@ -4,7 +4,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
-import { getAuthContext, unauthorizedResponse, isAdmin } from '@/lib/api-auth';
+import { getAuthContext, unauthorizedResponse, isAdmin, noOrganizationResponse } from '@/lib/api-auth';
 
 /**
  * 文字列をマスクする
@@ -24,9 +24,12 @@ export async function GET() {
     return unauthorizedResponse();
   }
 
-  try {
-    const { organizationId } = auth;
+  const { organizationId } = auth;
+  if (!organizationId) {
+    return noOrganizationResponse();
+  }
 
+  try {
     // 組織の設定を取得（存在しない場合は作成）
     let settings = await prisma.settings.findUnique({
       where: { organizationId },
@@ -78,8 +81,12 @@ export async function PUT(request: NextRequest) {
     );
   }
 
+  const { organizationId } = auth;
+  if (!organizationId) {
+    return noOrganizationResponse();
+  }
+
   try {
-    const { organizationId } = auth;
     const body = await request.json();
 
     const {

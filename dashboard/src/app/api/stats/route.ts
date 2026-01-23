@@ -12,9 +12,19 @@ export async function GET() {
     return unauthorizedResponse();
   }
 
-  try {
-    const { organizationId } = auth;
+  const { organizationId } = auth;
+  if (!organizationId) {
+    return NextResponse.json({
+      totalRecordings: 0,
+      totalClients: 0,
+      totalDuration: 0,
+      completedCount: 0,
+      weeklyRecordings: 0,
+      completionRate: 0,
+    });
+  }
 
+  try {
     // 総録画数
     const totalRecordings = await prisma.recording.count({
       where: { organizationId },

@@ -20,6 +20,18 @@ export async function GET(
     const { name } = await params;
     const clientName = decodeURIComponent(name);
 
+    // 組織に所属していない場合は空の結果を返す
+    if (!organizationId) {
+      return NextResponse.json({
+        clientName,
+        recordings: [],
+        stats: {
+          totalRecordings: 0,
+          totalDuration: 0,
+        },
+      });
+    }
+
     // クライアントの録画を取得
     const recordings = await prisma.recording.findMany({
       where: {

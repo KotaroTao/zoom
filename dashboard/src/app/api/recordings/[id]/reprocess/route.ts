@@ -5,7 +5,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
-import { getAuthContext, unauthorizedResponse } from '@/lib/api-auth';
+import { getAuthContext, unauthorizedResponse, noOrganizationResponse } from '@/lib/api-auth';
 
 // バックエンドサーバーのURL
 const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:3002';
@@ -19,8 +19,12 @@ export async function POST(
     return unauthorizedResponse();
   }
 
+  const { organizationId } = auth;
+  if (!organizationId) {
+    return noOrganizationResponse();
+  }
+
   try {
-    const { organizationId } = auth;
     const { id } = await params;
 
     // 録画の存在確認と権限チェック

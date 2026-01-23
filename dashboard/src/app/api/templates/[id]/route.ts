@@ -4,7 +4,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
-import { getAuthContext, unauthorizedResponse } from '@/lib/api-auth';
+import { getAuthContext, unauthorizedResponse, noOrganizationResponse } from '@/lib/api-auth';
 
 // テンプレート詳細取得
 export async function GET(
@@ -16,8 +16,12 @@ export async function GET(
     return unauthorizedResponse();
   }
 
+  const { organizationId } = auth;
+  if (!organizationId) {
+    return noOrganizationResponse();
+  }
+
   try {
-    const { organizationId } = auth;
     const { id } = await params;
 
     const template = await prisma.reportTemplate.findFirst({
@@ -51,8 +55,12 @@ export async function PUT(
     return unauthorizedResponse();
   }
 
+  const { organizationId } = auth;
+  if (!organizationId) {
+    return noOrganizationResponse();
+  }
+
   try {
-    const { organizationId } = auth;
     const { id } = await params;
     const body = await request.json();
     const { name, description, content, isDefault, isActive } = body;
@@ -107,8 +115,12 @@ export async function DELETE(
     return unauthorizedResponse();
   }
 
+  const { organizationId } = auth;
+  if (!organizationId) {
+    return noOrganizationResponse();
+  }
+
   try {
-    const { organizationId } = auth;
     const { id } = await params;
 
     const existing = await prisma.reportTemplate.findFirst({

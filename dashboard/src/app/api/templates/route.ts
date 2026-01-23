@@ -4,7 +4,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
-import { getAuthContext, unauthorizedResponse } from '@/lib/api-auth';
+import { getAuthContext, unauthorizedResponse, noOrganizationResponse } from '@/lib/api-auth';
 
 // テンプレート一覧取得
 export async function GET(request: NextRequest) {
@@ -13,8 +13,12 @@ export async function GET(request: NextRequest) {
     return unauthorizedResponse();
   }
 
+  const { organizationId } = auth;
+  if (!organizationId) {
+    return NextResponse.json({ templates: [] });
+  }
+
   try {
-    const { organizationId } = auth;
     const { searchParams } = new URL(request.url);
     const includeInactive = searchParams.get('includeInactive') === 'true';
 
@@ -48,8 +52,12 @@ export async function POST(request: NextRequest) {
     return unauthorizedResponse();
   }
 
+  const { organizationId } = auth;
+  if (!organizationId) {
+    return noOrganizationResponse();
+  }
+
   try {
-    const { organizationId } = auth;
     const body = await request.json();
     const { name, description, content, isDefault } = body;
 
