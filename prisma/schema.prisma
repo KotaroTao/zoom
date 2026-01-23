@@ -104,9 +104,6 @@ model User {
   // メール認証
   emailVerified DateTime?
 
-  // 個人利用モード（組織なしで利用）
-  isPersonalMode Boolean @default(false)
-
   // デフォルト組織（ログイン時に表示する組織）
   defaultOrganizationId String?
 
@@ -117,7 +114,6 @@ model User {
   memberships      OrganizationMember[]
   teamMemberships  TeamMember[]
   invitationsSent  Invitation[] @relation("InvitationSender")
-  personalRecordings Recording[] @relation("PersonalRecordings")
 }
 
 // -------------------------------------------
@@ -185,17 +181,13 @@ model Invitation {
 model Recording {
   id              String   @id @default(cuid())
 
-  // 組織（テナント）- 組織利用時
-  organizationId  String?
-  organization    Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  // 組織（テナント）- 必須
+  organizationId  String
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
-  // チーム（オプション）- チーム利用時
+  // チーム（オプション）
   teamId          String?
   team            Team? @relation(fields: [teamId], references: [id], onDelete: SetNull)
-
-  // 個人利用時のユーザー
-  personalUserId  String?
-  personalUser    User? @relation("PersonalRecordings", fields: [personalUserId], references: [id], onDelete: Cascade)
 
   // Zoom情報
   zoomMeetingId   String
@@ -251,14 +243,13 @@ model Recording {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  // インデックス（organizationIdがnullableになったため、複合ユニークは条件付き）
+  // 複合ユニーク（同じ組織内で同じZoomミーティングは1つ）
+  @@unique([organizationId, zoomMeetingId])
   @@index([organizationId])
   @@index([teamId])
-  @@index([personalUserId])
   @@index([clientName])
   @@index([status])
   @@index([meetingDate])
-  @@index([zoomMeetingId])
 }
 
 // -------------------------------------------
