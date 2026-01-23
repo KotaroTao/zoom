@@ -4,7 +4,7 @@
 
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
-import { getAuthContext, unauthorizedResponse, isAdmin } from '@/lib/api-auth';
+import { getAuthContext, unauthorizedResponse, noOrganizationResponse } from '@/lib/api-auth';
 
 /**
  * メンバー一覧を取得
@@ -15,9 +15,12 @@ export async function GET() {
     return unauthorizedResponse();
   }
 
-  try {
-    const { organizationId } = auth;
+  const { organizationId } = auth;
+  if (!organizationId) {
+    return noOrganizationResponse();
+  }
 
+  try {
     const members = await prisma.organizationMember.findMany({
       where: { organizationId },
       include: {

@@ -4,7 +4,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
-import { getAuthContext, unauthorizedResponse, isAdmin } from '@/lib/api-auth';
+import { getAuthContext, unauthorizedResponse, isAdmin, noOrganizationResponse } from '@/lib/api-auth';
 import { generateInviteToken } from '@/lib/auth';
 
 /**
@@ -16,6 +16,11 @@ export async function GET() {
     return unauthorizedResponse();
   }
 
+  const { organizationId } = auth;
+  if (!organizationId) {
+    return noOrganizationResponse();
+  }
+
   // 管理者権限をチェック
   if (!isAdmin(auth.role)) {
     return NextResponse.json(
@@ -25,8 +30,6 @@ export async function GET() {
   }
 
   try {
-    const { organizationId } = auth;
-
     const invitations = await prisma.invitation.findMany({
       where: {
         organizationId,
@@ -59,6 +62,11 @@ export async function POST(request: NextRequest) {
     return unauthorizedResponse();
   }
 
+  const { organizationId, userId } = auth;
+  if (!organizationId) {
+    return noOrganizationResponse();
+  }
+
   // 管理者権限をチェック
   if (!isAdmin(auth.role)) {
     return NextResponse.json(
@@ -68,7 +76,6 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const { organizationId, userId } = auth;
     const body = await request.json();
     const { email, role = 'member' } = body;
 
