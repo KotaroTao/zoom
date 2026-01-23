@@ -21,6 +21,9 @@ import {
   Trash2,
 } from 'lucide-react';
 
+// basePath を考慮したAPI呼び出し用
+const API_BASE = process.env.NEXT_PUBLIC_BASE_PATH || '';
+
 interface Organization {
   id: string;
   name: string;
@@ -83,7 +86,7 @@ export default function OrganizationsPage() {
   // 組織一覧を取得
   const fetchOrganizations = async () => {
     try {
-      const res = await fetch('/api/organizations');
+      const res = await fetch(`${API_BASE}/api/organizations`);
       if (res.ok) {
         const data = await res.json();
         setOrganizations(data.organizations);
@@ -102,7 +105,7 @@ export default function OrganizationsPage() {
   const fetchTeams = async () => {
     if (!selectedOrg) return;
     try {
-      const res = await fetch('/api/teams');
+      const res = await fetch(`${API_BASE}/api/teams`);
       if (res.ok) {
         const data = await res.json();
         setTeams(data.teams);
@@ -116,7 +119,7 @@ export default function OrganizationsPage() {
   const fetchMembers = async () => {
     if (!selectedOrg) return;
     try {
-      const res = await fetch('/api/organizations/members');
+      const res = await fetch(`${API_BASE}/api/organizations/members`);
       if (res.ok) {
         const data = await res.json();
         setMembers(data.members);
@@ -142,7 +145,7 @@ export default function OrganizationsPage() {
     if (!newOrgName.trim()) return;
     setCreating(true);
     try {
-      const res = await fetch('/api/organizations', {
+      const res = await fetch(`${API_BASE}/api/organizations`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: newOrgName }),
@@ -168,7 +171,7 @@ export default function OrganizationsPage() {
     if (!newTeamName.trim()) return;
     setCreating(true);
     try {
-      const res = await fetch('/api/teams', {
+      const res = await fetch(`${API_BASE}/api/teams`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -194,7 +197,7 @@ export default function OrganizationsPage() {
     if (!inviteEmail.trim()) return;
     setCreating(true);
     try {
-      const res = await fetch('/api/organizations/invitations', {
+      const res = await fetch(`${API_BASE}/api/organizations/invitations`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
