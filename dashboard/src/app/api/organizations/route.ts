@@ -31,6 +31,17 @@ export async function GET() {
                 recordings: true,
               },
             },
+            members: {
+              include: {
+                user: {
+                  select: {
+                    id: true,
+                    name: true,
+                    email: true,
+                  },
+                },
+              },
+            },
           },
         },
       },
@@ -45,6 +56,13 @@ export async function GET() {
         plan: string;
         createdAt: Date;
         _count: { members: number; recordings: number };
+        members: Array<{
+          id: string;
+          userId: string;
+          role: string;
+          createdAt: Date;
+          user: { id: string; name: string | null; email: string };
+        }>;
       };
     }) => ({
       id: m.organization.id,
@@ -55,6 +73,8 @@ export async function GET() {
       memberCount: m.organization._count.members,
       recordingCount: m.organization._count.recordings,
       createdAt: m.organization.createdAt,
+      _count: m.organization._count,
+      members: m.organization.members,
     }));
 
     return NextResponse.json({ organizations });

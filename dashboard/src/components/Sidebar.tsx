@@ -9,6 +9,7 @@ import {
   Settings,
   RefreshCw,
   FileText,
+  Building2,
 } from 'lucide-react';
 
 const navigation = [
@@ -16,6 +17,7 @@ const navigation = [
   { name: '録画一覧', href: '/recordings', icon: Video },
   { name: 'クライアント', href: '/clients', icon: Users },
   { name: 'テンプレート', href: '/templates', icon: FileText },
+  { name: '組織・チーム', href: '/organizations', icon: Building2 },
   { name: 'セットアップ', href: '/setup', icon: Settings },
 ];
 
@@ -35,7 +37,7 @@ export function Sidebar() {
       {/* ナビゲーション */}
       <nav className="flex-1 px-4 py-4 space-y-1">
         {navigation.map((item) => {
-          const isActive = pathname === item.href;
+          const isActive = pathname === item.href || (item.href !== '/' && pathname.startsWith(item.href));
           return (
             <Link
               key={item.name}

@@ -26,7 +26,6 @@ import {
 } from 'lucide-react';
 import { DashboardLayout } from '@/components/DashboardLayout';
 import { api, Settings, ConnectionStatus, Credentials } from '@/lib/api';
-import { Users } from 'lucide-react';
 
 interface SetupStep {
   id: string;
@@ -59,12 +58,6 @@ export default function SetupPage() {
   const [showSecrets, setShowSecrets] = useState<Record<string, boolean>>({});
   const [savingSettings, setSavingSettings] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  // 組織タグ関連
-  const [userOrganization, setUserOrganization] = useState<string>('');
-  const [organizationMembers, setOrganizationMembers] = useState<{ id: string; name: string | null; email: string }[]>([]);
-  const [savingOrganization, setSavingOrganization] = useState(false);
-  const [organizationSaved, setOrganizationSaved] = useState(false);
 
   const [settings, setSettings] = useState<Settings>({
     id: 'default',
@@ -109,16 +102,12 @@ export default function SetupPage() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [settingsData, statusData, orgData, membersData] = await Promise.all([
+        const [settingsData, statusData] = await Promise.all([
           api.getSettings(),
           api.getConnectionStatus(),
-          api.getUserOrganization(),
-          api.getOrganizationMembers(),
         ]);
         setSettings(settingsData);
         setConnectionStatus(statusData);
-        setUserOrganization(orgData.organization || '');
-        setOrganizationMembers(membersData.members || []);
       } catch (err) {
         console.error('Failed to fetch data:', err);
         setError('設定の取得に失敗しました');
@@ -170,26 +159,6 @@ export default function SetupPage() {
     const newSettings = { ...settings, [key]: value };
     setSettings(newSettings);
     saveSettings({ [key]: value });
-  };
-
-  // 組織タグを保存
-  const handleSaveOrganization = async () => {
-    setSavingOrganization(true);
-    setOrganizationSaved(false);
-    try {
-      const result = await api.updateUserOrganization(userOrganization || null);
-      setUserOrganization(result.organization || '');
-      // メンバー一覧を再取得
-      const membersData = await api.getOrganizationMembers();
-      setOrganizationMembers(membersData.members || []);
-      setOrganizationSaved(true);
-      setTimeout(() => setOrganizationSaved(false), 3000);
-    } catch (err) {
-      console.error('Failed to save organization:', err);
-      setError('組織タグの保存に失敗しました');
-    } finally {
-      setSavingOrganization(false);
-    }
   };
 
   // サービス固有の認証情報を取得
@@ -1026,79 +995,6 @@ export default function SetupPage() {
                   />
                   <div className={`w-11 h-6 bg-gray-200 peer-focus:ring-4 peer-focus:ring-primary-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-600 ${!isServiceConnected('notion') ? 'peer-checked:bg-gray-400' : ''}`}></div>
                 </label>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* 組織タグ設定 */}
-        <div className="mt-8">
-          <h2 className="text-lg font-bold text-gray-900 mb-4">録画共有設定</h2>
-          <div className="card p-4">
-            <div className="flex items-start gap-3">
-              <Users className="h-5 w-5 text-indigo-500 mt-0.5" />
-              <div className="flex-1">
-                <p className="font-medium text-gray-900">組織タグ</p>
-                <p className="text-xs text-gray-500 mb-3">
-                  同じ組織タグを持つユーザー間で録画一覧を共有できます。空の場合は自分の録画のみ表示されます。
-                </p>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    value={userOrganization}
-                    onChange={(e) => setUserOrganization(e.target.value)}
-                    placeholder="例: チームA、営業部、株式会社〇〇"
-                    className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                  />
-                  <button
-                    onClick={handleSaveOrganization}
-                    disabled={savingOrganization}
-                    className="px-4 py-2 text-sm bg-primary-600 hover:bg-primary-700 text-white rounded-lg disabled:opacity-50 flex items-center gap-2"
-                  >
-                    {savingOrganization ? (
-                      <>
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        保存中...
-                      </>
-                    ) : organizationSaved ? (
-                      <>
-                        <CheckCircle className="h-4 w-4" />
-                        保存しました
-                      </>
-                    ) : (
-                      '保存'
-                    )}
-                  </button>
-                </div>
-
-                {/* 同じ組織のメンバー表示 */}
-                {organizationMembers.length > 0 && (
-                  <div className="mt-4 p-3 bg-gray-50 rounded-lg">
-                    <p className="text-xs font-medium text-gray-700 mb-2">
-                      同じ組織のメンバー（{organizationMembers.length}名）
-                    </p>
-                    <div className="flex flex-wrap gap-2">
-                      {organizationMembers.map((member) => (
-                        <span
-                          key={member.id}
-                          className="inline-flex items-center px-2 py-1 bg-white border border-gray-200 rounded-full text-xs text-gray-600"
-                          title={member.email}
-                        >
-                          {member.name || member.email}
-                        </span>
-                      ))}
-                    </div>
-                    <p className="text-xs text-gray-500 mt-2">
-                      これらのユーザーと録画一覧が共有されます
-                    </p>
-                  </div>
-                )}
-
-                {userOrganization && organizationMembers.length === 0 && (
-                  <p className="mt-3 text-xs text-gray-500">
-                    現在、同じ組織タグを持つ他のユーザーはいません
-                  </p>
-                )}
               </div>
             </div>
           </div>
