@@ -101,7 +101,7 @@ export async function POST(request: Request) {
       slug = `${slug}-${Date.now().toString(36)}`;
     }
 
-    // トランザクションで組織とメンバーシップを作成
+    // トランザクションで組織・メンバーシップ・デフォルトチームを作成
     const result = await prisma.$transaction(async (tx: TransactionClient) => {
       // 組織を作成
       const organization = await tx.organization.create({
@@ -117,6 +117,26 @@ export async function POST(request: Request) {
           userId: session.user.id,
           organizationId: organization.id,
           role: 'owner',
+        },
+      });
+
+      // デフォルトチーム「全社」を作成
+      const defaultTeam = await tx.team.create({
+        data: {
+          name: '全社',
+          description: '組織全体のデフォルトチーム',
+          isDefault: true,
+          organizationId: organization.id,
+          color: '#3B82F6',
+        },
+      });
+
+      // 作成者をチームの管理者として追加
+      await tx.teamMember.create({
+        data: {
+          userId: session.user.id,
+          teamId: defaultTeam.id,
+          role: 'admin',
         },
       });
 

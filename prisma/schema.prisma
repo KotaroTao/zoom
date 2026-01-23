@@ -1,6 +1,6 @@
 // ===========================================
 // Zoom YouTube Automation - Prisma Schema
-// マルチテナント対応版
+// マルチテナント対応版（組織・チーム機能拡張）
 // ===========================================
 
 generator client {
@@ -13,7 +13,7 @@ datasource db {
 }
 
 // -------------------------------------------
-// 組織（テナント）
+// 組織（テナント）- 会社・団体単位
 // -------------------------------------------
 model Organization {
   id          String   @id @default(cuid())
@@ -23,6 +23,7 @@ model Organization {
 
   // 制限
   maxMembers      Int @default(5)
+  maxTeams        Int @default(10)
   maxRecordings   Int @default(100) // 月間処理数
 
   createdAt   DateTime @default(now())
@@ -30,11 +31,61 @@ model Organization {
 
   // リレーション
   members         OrganizationMember[]
+  teams           Team[]
   recordings      Recording[]
   clients         Client[]
   reportTemplates ReportTemplate[]
   settings        Settings?
   invitations     Invitation[]
+}
+
+// -------------------------------------------
+// チーム（組織内のプロジェクト/部門単位）
+// -------------------------------------------
+model Team {
+  id             String   @id @default(cuid())
+  name           String
+  description    String?
+  color          String?  // 表示用カラー（#RRGGBB）
+  isDefault      Boolean  @default(false)  // デフォルトチーム（組織作成時に自動作成）
+
+  // 外部キー
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  // リレーション
+  members        TeamMember[]
+  recordings     Recording[]
+  invitations    Invitation[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+}
+
+// -------------------------------------------
+// チームメンバーシップ
+// -------------------------------------------
+model TeamMember {
+  id             String   @id @default(cuid())
+  role           String   @default("member") // admin, member, viewer
+
+  // 外部キー
+  userId         String
+  teamId         String
+
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  // リレーション
+  user           User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  team           Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, teamId])
+  @@index([teamId])
+  @@index([userId])
 }
 
 // -------------------------------------------
@@ -53,20 +104,29 @@ model User {
   // メール認証
   emailVerified DateTime?
 
+  // 個人利用モード（組織なしで利用）
+  isPersonalMode Boolean @default(false)
+
+  // デフォルト組織（ログイン時に表示する組織）
+  defaultOrganizationId String?
+
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
   // リレーション
-  memberships   OrganizationMember[]
-  invitationsSent Invitation[] @relation("InvitationSender")
+  memberships      OrganizationMember[]
+  teamMemberships  TeamMember[]
+  invitationsSent  Invitation[] @relation("InvitationSender")
+  personalRecordings Recording[] @relation("PersonalRecordings")
 }
 
 // -------------------------------------------
 // 組織メンバーシップ（多対多の中間テーブル）
+// 役割: owner（オーナー）, admin（管理者）, member（メンバー）
 // -------------------------------------------
 model OrganizationMember {
   id             String   @id @default(cuid())
-  role           String   @default("member") // owner, admin, member, viewer
+  role           String   @default("member") // owner, admin, member
 
   // 外部キー
   userId         String
@@ -81,6 +141,7 @@ model OrganizationMember {
 
   @@unique([userId, organizationId])
   @@index([organizationId])
+  @@index([userId])
 }
 
 // -------------------------------------------
@@ -89,22 +150,33 @@ model OrganizationMember {
 model Invitation {
   id             String   @id @default(cuid())
   email          String
-  role           String   @default("member")
   token          String   @unique
   expiresAt      DateTime
+  acceptedAt     DateTime?  // 承認済み日時
+
+  // 招待種別
+  type           String   @default("organization") // organization, team
+
+  // 組織への招待
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  orgRole        String   @default("member") // owner, admin, member
+
+  // チームへの招待（オプション）
+  teamId         String?
+  team           Team?    @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  teamRole       String?  // admin, member, viewer
 
   // 招待者
   invitedById    String
   invitedBy      User     @relation("InvitationSender", fields: [invitedById], references: [id])
 
-  // 組織
-  organizationId String
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-
   createdAt      DateTime @default(now())
 
   @@index([email])
   @@index([organizationId])
+  @@index([teamId])
+  @@index([token])
 }
 
 // -------------------------------------------
@@ -113,9 +185,17 @@ model Invitation {
 model Recording {
   id              String   @id @default(cuid())
 
-  // 組織（テナント）
-  organizationId  String
-  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  // 組織（テナント）- 組織利用時
+  organizationId  String?
+  organization    Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  // チーム（オプション）- チーム利用時
+  teamId          String?
+  team            Team? @relation(fields: [teamId], references: [id], onDelete: SetNull)
+
+  // 個人利用時のユーザー
+  personalUserId  String?
+  personalUser    User? @relation("PersonalRecordings", fields: [personalUserId], references: [id], onDelete: Cascade)
 
   // Zoom情報
   zoomMeetingId   String
@@ -171,12 +251,14 @@ model Recording {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  // インデックス
-  @@unique([organizationId, zoomMeetingId])
+  // インデックス（organizationIdがnullableになったため、複合ユニークは条件付き）
   @@index([organizationId])
+  @@index([teamId])
+  @@index([personalUserId])
   @@index([clientName])
   @@index([status])
   @@index([meetingDate])
+  @@index([zoomMeetingId])
 }
 
 // -------------------------------------------

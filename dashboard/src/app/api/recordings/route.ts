@@ -13,17 +13,37 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const { organizationId } = auth;
+    const { organizationId, userId, role } = auth;
     const { searchParams } = new URL(request.url);
 
     const limit = parseInt(searchParams.get('limit') || '20');
     const offset = parseInt(searchParams.get('offset') || '0');
     const clientName = searchParams.get('client');
     const status = searchParams.get('status');
+    const teamId = searchParams.get('teamId');
 
     const where: Record<string, unknown> = { organizationId };
     if (clientName) where.clientName = clientName;
     if (status) where.status = status;
+
+    // チームフィルタ
+    if (teamId) {
+      // 特定のチームを指定
+      where.teamId = teamId;
+    } else if (role !== 'owner' && role !== 'admin') {
+      // 組織の管理者以外は、所属チームの録画のみ表示
+      const userTeams = await prisma.teamMember.findMany({
+        where: { userId },
+        select: { teamId: true },
+      });
+      const teamIds = userTeams.map((t: { teamId: string }) => t.teamId);
+
+      // 自分が所属するチームの録画、またはチームなしの録画
+      where.OR = [
+        { teamId: { in: teamIds } },
+        { teamId: null },
+      ];
+    }
 
     const [recordings, total] = await Promise.all([
       prisma.recording.findMany({

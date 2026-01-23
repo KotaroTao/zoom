@@ -9,6 +9,7 @@ import {
   Settings,
   RefreshCw,
   FileText,
+  Building2,
 } from 'lucide-react';
 
 const navigation = [
@@ -16,6 +17,7 @@ const navigation = [
   { name: '録画一覧', href: '/recordings', icon: Video },
   { name: 'クライアント', href: '/clients', icon: Users },
   { name: 'テンプレート', href: '/templates', icon: FileText },
+  { name: '組織・チーム', href: '/organizations', icon: Building2 },
   { name: 'セットアップ', href: '/setup', icon: Settings },
 ];
 
