@@ -147,13 +147,17 @@ export default function OrganizationsPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: newOrgName }),
       });
+      const data = await res.json();
       if (res.ok) {
         setNewOrgName('');
         setShowCreateOrg(false);
         await fetchOrganizations();
+      } else {
+        alert(`組織作成エラー: ${data.error || res.statusText}`);
       }
     } catch (error) {
       console.error('Failed to create organization:', error);
+      alert('組織の作成に失敗しました。ネットワーク接続を確認してください。');
     } finally {
       setCreating(false);
     }
