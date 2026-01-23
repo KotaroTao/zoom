@@ -21,8 +21,16 @@ export async function GET(request: NextRequest) {
     const clientName = searchParams.get('client');
     const status = searchParams.get('status');
 
-    // 基本条件：自分の組織の録画
-    const baseConditions: Record<string, unknown>[] = [{ organizationId }];
+    // 基本条件を構築
+    const baseConditions: Record<string, unknown>[] = [];
+
+    // 組織に所属している場合、その組織の録画を含める
+    if (organizationId) {
+      baseConditions.push({ organizationId });
+    }
+
+    // 自分が作成した録画を含める
+    baseConditions.push({ createdByUserId: userId });
 
     // 組織タグが設定されている場合、同じ組織タグを持つユーザーの録画も含める
     if (userOrganization) {
@@ -43,10 +51,10 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // OR条件で結合
-    const where: Record<string, unknown> = {
-      OR: baseConditions,
-    };
+    // OR条件で結合（条件がない場合は空の結果になる）
+    const where: Record<string, unknown> = baseConditions.length > 0
+      ? { OR: baseConditions }
+      : { id: 'none' }; // 条件がない場合は結果なし
 
     // 追加フィルター
     if (clientName) where.clientName = clientName;

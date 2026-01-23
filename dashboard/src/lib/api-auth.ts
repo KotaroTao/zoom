@@ -10,7 +10,7 @@ import { prisma } from './db';
 
 export interface AuthContext {
   userId: string;
-  organizationId: string;
+  organizationId: string | null;  // nullの場合は組織未所属
   role: string;
   userOrganization?: string | null;  // ユーザーの組織タグ（共有用）
 }
@@ -67,7 +67,13 @@ export async function getAuthContext(): Promise<AuthContext | null> {
     console.error('[API-AUTH] Failed to fetch membership from DB:', error);
   }
 
-  return null;
+  // 組織に所属していなくても認証は成功（組織未所属状態）
+  return {
+    userId: session.user.id,
+    organizationId: null,
+    role: 'member',
+    userOrganization,
+  };
 }
 
 /**
