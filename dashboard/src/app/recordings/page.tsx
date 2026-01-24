@@ -1163,6 +1163,26 @@ export default function RecordingsPage() {
                   <FileOutput className="h-4 w-4" />
                   報告書を生成
                 </button>
+                <button
+                  onClick={() => {
+                    const recordingId = selectedRecording.id;
+                    setSelectedRecording(null);
+                    setModalTab('summary');
+                    setDetailedSummary(null);
+                    setDetailedSummaryStatus(null);
+                    setGeneratingDetailed(false);
+                    handleReprocess(recordingId);
+                  }}
+                  disabled={reprocessingId === selectedRecording.id}
+                  className="px-3 py-2 text-sm text-orange-600 hover:bg-orange-50 rounded-lg flex items-center justify-center gap-1 disabled:opacity-50"
+                >
+                  {reprocessingId === selectedRecording.id ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <RefreshCw className="h-4 w-4" />
+                  )}
+                  再処理
+                </button>
               </div>
               <div className="flex gap-2 justify-end order-1 sm:order-2">
                 {selectedRecording.youtubeUrl && (
