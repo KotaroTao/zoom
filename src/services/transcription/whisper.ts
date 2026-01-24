@@ -5,6 +5,10 @@
  * 大容量ファイル対応:
  * - 25MB以上のファイルは自動的に音声抽出・分割処理
  * - ffmpegを使用して効率的に処理
+ *
+ * ハルシネーション対策:
+ * - 繰り返しパターンの検出・除去
+ * - プロンプトエコーバックの除去
  */
 
 import * as fs from 'fs';
@@ -41,6 +45,72 @@ const MAX_FILE_SIZE = 25 * 1024 * 1024;
 const OVERLAP_SECONDS = 30;
 
 /**
+ * ハルシネーション（繰り返しパターン）を検出・除去
+ */
+function removeHallucinations(text: string): string {
+  if (!text) return text;
+
+  let result = text;
+
+  // 1. プロンプトのエコーバックを除去
+  // 「日本語のミーティング録音」が繰り返されるパターン
+  const promptEchoPattern = /(?:日本語のミーティング録音[はをがで]?[^。]*[。．]?\s*)+/g;
+  result = result.replace(promptEchoPattern, '');
+
+  // 2. 同じ短いフレーズが連続して繰り返されるパターンを検出・除去
+  // 例: 「はい。はい。はい。...」「うん。うん。うん。...」
+  const shortPhrases = ['はい', 'うん', 'ええ', 'そう', 'ああ', 'へえ', 'ふーん', 'なるほど'];
+  for (const phrase of shortPhrases) {
+    // 同じフレーズが5回以上連続したら、最大3回に制限
+    const repeatPattern = new RegExp(`(${phrase}[。．、]?\\s*){5,}`, 'g');
+    result = result.replace(repeatPattern, `${phrase}。 ${phrase}。 ${phrase}。 `);
+  }
+
+  // 3. より汎用的な繰り返し検出（同じ文が3回以上連続）
+  const sentences = result.split(/(?<=[。．！？\n])/);
+  const cleanedSentences: string[] = [];
+  let prevSentence = '';
+  let repeatCount = 0;
+
+  for (const sentence of sentences) {
+    const trimmed = sentence.trim();
+    if (!trimmed) continue;
+
+    if (trimmed === prevSentence) {
+      repeatCount++;
+      // 同じ文が3回以上連続したら、それ以上は追加しない
+      if (repeatCount < 3) {
+        cleanedSentences.push(sentence);
+      }
+    } else {
+      cleanedSentences.push(sentence);
+      prevSentence = trimmed;
+      repeatCount = 1;
+    }
+  }
+
+  result = cleanedSentences.join('');
+
+  // 4. 末尾の大量の繰り返しを検出して除去
+  // 「はい。」などが文末で大量に繰り返されているパターン
+  const endRepeatPattern = /([^。．！？\n]{1,10}[。．！？]\s*)\1{10,}$/;
+  const endMatch = result.match(endRepeatPattern);
+  if (endMatch) {
+    // 繰り返しの開始位置を見つけて、そこまでの内容を保持
+    const repeatStart = result.lastIndexOf(endMatch[1].repeat(10));
+    if (repeatStart > 0) {
+      result = result.substring(0, repeatStart) + endMatch[1].repeat(2);
+      logger.warn('末尾の繰り返しパターンを検出・除去しました', {
+        pattern: endMatch[1].trim(),
+        removedLength: result.length - repeatStart
+      });
+    }
+  }
+
+  return result.trim();
+}
+
+/**
  * テキストから最後の数文を抽出（コンテキスト用）
  * 次のチャンクの文字起こし精度向上のため
  */
@@ -70,10 +140,11 @@ async function transcribeSingleFile(
   language?: string;
   segments?: TranscriptionSegment[];
 }> {
-  // プロンプトを構築（デフォルト + コンテキスト）
-  const basePrompt = options.prompt || 'これは日本語のミーティング録音です。';
+  // プロンプトを構築（ハルシネーション防止のため具体的な内容を指定）
+  // 注意: 抽象的なプロンプトは繰り返しの原因になるため、具体的な指示を与える
+  const basePrompt = options.prompt || 'ビジネスミーティングの会話を文字起こししてください。話者は複数いる可能性があります。';
   const fullPrompt = contextPrompt
-    ? `${basePrompt} 前の内容: ${contextPrompt}`
+    ? `${basePrompt} 直前の会話: ${contextPrompt}`
     : basePrompt;
 
   const response = await openai.audio.transcriptions.create({
@@ -291,15 +362,21 @@ async function transcribeLargeFile(
     // 結果を結合
     const combined = combineChunkResults(chunks, results);
 
+    // ハルシネーション除去
+    const cleanedText = removeHallucinations(combined.text);
+    const hallucinationRemoved = cleanedText.length < combined.text.length;
+
     logger.info('大容量ファイル文字起こし完了', {
-      totalTextLength: combined.text.length,
+      totalTextLength: cleanedText.length,
+      originalLength: combined.text.length,
+      hallucinationRemoved,
       totalDuration: `${Math.round(combined.duration / 60)}分`,
       chunkCount: chunks.length,
     });
 
     return {
       success: true,
-      text: combined.text,
+      text: cleanedText,
       duration: combined.duration,
       language: combined.language,
       segments: combined.segments,
@@ -357,8 +434,14 @@ export async function transcribeWithWhisper(
     const openai = await getOpenAIClient();
     const result = await transcribeSingleFile(openai, filePath, options);
 
+    // ハルシネーション除去
+    const cleanedText = removeHallucinations(result.text);
+    const hallucinationRemoved = cleanedText.length < result.text.length;
+
     logger.info('Whisper文字起こし完了', {
-      textLength: result.text.length,
+      textLength: cleanedText.length,
+      originalLength: result.text.length,
+      hallucinationRemoved,
       duration: result.duration ? `${Math.round(result.duration / 60)}分` : undefined,
       language: result.language,
       segmentCount: result.segments?.length || 0,
@@ -366,7 +449,7 @@ export async function transcribeWithWhisper(
 
     return {
       success: true,
-      text: result.text,
+      text: cleanedText,
       duration: result.duration,
       language: result.language,
       segments: result.segments,
