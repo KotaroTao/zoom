@@ -322,12 +322,14 @@ export const api = {
     offset?: number;
     client?: string;
     status?: string;
+    teamId?: string;
   }) => {
     const searchParams = new URLSearchParams();
     if (params?.limit) searchParams.set('limit', params.limit.toString());
     if (params?.offset) searchParams.set('offset', params.offset.toString());
     if (params?.client) searchParams.set('client', params.client);
     if (params?.status) searchParams.set('status', params.status);
+    if (params?.teamId) searchParams.set('teamId', params.teamId);
 
     const query = searchParams.toString();
     return fetchApi<RecordingsResponse>(`/recordings${query ? `?${query}` : ''}`);

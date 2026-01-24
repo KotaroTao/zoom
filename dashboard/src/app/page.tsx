@@ -5,8 +5,6 @@ import { Video, CheckCircle, RefreshCw } from 'lucide-react';
 import { DashboardLayout } from '@/components/DashboardLayout';
 import { ActionRequired } from '@/components/ActionRequired';
 import { TodaysMeetings } from '@/components/TodaysMeetings';
-import { WeeklyClientActivity } from '@/components/WeeklyClientActivity';
-import { QueueStatus } from '@/components/QueueStatus';
 import { api, DashboardData, Client } from '@/lib/api';
 
 export default function DashboardPage() {
@@ -83,37 +81,23 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* メインコンテンツ - 2カラムレイアウト */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* 左側: 対応が必要 + 今日のミーティング */}
-          <div className="lg:col-span-2 space-y-6">
-            {/* 対応が必要セクション */}
-            {data && (
-              <ActionRequired
-                failed={data.actionItems.failed}
-                noClient={data.actionItems.noClient}
-                noSummary={data.actionItems.noSummary}
-                clients={clients}
-                onUpdate={fetchData}
-              />
-            )}
+        {/* メインコンテンツ */}
+        <div className="space-y-6">
+          {/* 対応が必要セクション */}
+          {data && (
+            <ActionRequired
+              failed={data.actionItems.failed}
+              noClient={data.actionItems.noClient}
+              noSummary={data.actionItems.noSummary}
+              clients={clients}
+              onUpdate={fetchData}
+            />
+          )}
 
-            {/* 今日のミーティング */}
-            {data && (
-              <TodaysMeetings recordings={data.todaysRecordings} />
-            )}
-          </div>
-
-          {/* 右側: 今週のクライアント活動 + 処理キュー */}
-          <div className="space-y-6">
-            {/* 今週のクライアント活動 */}
-            {data && (
-              <WeeklyClientActivity clients={data.weeklyClients} />
-            )}
-
-            {/* 処理キュー */}
-            <QueueStatus />
-          </div>
+          {/* 今日のミーティング */}
+          {data && (
+            <TodaysMeetings recordings={data.todaysRecordings} />
+          )}
         </div>
       </div>
     </DashboardLayout>

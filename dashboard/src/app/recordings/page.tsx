@@ -30,11 +30,21 @@ import {
   RefreshCw,
   Trash2,
   Send,
+  Users,
 } from 'lucide-react';
 import { StatusBadge } from '@/components/StatusBadge';
 import { DashboardLayout } from '@/components/DashboardLayout';
 import { SearchableSelect } from '@/components/SearchableSelect';
 import { api, Recording, Client, ReportTemplate } from '@/lib/api';
+
+const API_BASE = process.env.NEXT_PUBLIC_BASE_PATH || '';
+
+interface Team {
+  id: string;
+  name: string;
+  color: string | null;
+  isDefault: boolean;
+}
 
 // 連絡ツールアイコンを取得
 const getContactIcon = (type: string | null | undefined) => {
@@ -152,6 +162,8 @@ export default function RecordingsPage() {
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [teamFilter, setTeamFilter] = useState<string>('all');
+  const [teams, setTeams] = useState<Team[]>([]);
   const [page, setPage] = useState(0);
   const [selectedRecording, setSelectedRecording] = useState<Recording | null>(null);
   const [editingRecording, setEditingRecording] = useState<Recording | null>(null);
@@ -162,6 +174,22 @@ export default function RecordingsPage() {
   const [newClientName, setNewClientName] = useState('');
   const [creatingClient, setCreatingClient] = useState(false);
   const limit = 20;
+
+  // チーム一覧を取得
+  useEffect(() => {
+    const fetchTeams = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/teams`);
+        if (res.ok) {
+          const data = await res.json();
+          setTeams(data.teams);
+        }
+      } catch (error) {
+        console.error('Failed to fetch teams:', error);
+      }
+    };
+    fetchTeams();
+  }, []);
 
   // 報告書生成状態
   const [reportRecording, setReportRecording] = useState<Recording | null>(null);
@@ -190,6 +218,7 @@ export default function RecordingsPage() {
         limit,
         offset: page * limit,
         status: statusFilter !== 'all' ? statusFilter : undefined,
+        teamId: teamFilter !== 'all' ? teamFilter : undefined,
       });
       setRecordings(data.recordings);
       setTotal(data.total);
@@ -204,7 +233,7 @@ export default function RecordingsPage() {
 
   useEffect(() => {
     fetchRecordings();
-  }, [page, statusFilter]);
+  }, [page, statusFilter, teamFilter]);
 
   const handleEditOpen = async (recording: Recording) => {
     setEditingRecording(recording);
@@ -496,6 +525,28 @@ export default function RecordingsPage() {
                 className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
               />
             </div>
+
+            {/* チームフィルター */}
+            {teams.length > 0 && (
+              <div className="flex items-center gap-2">
+                <Users className="h-5 w-5 text-gray-400" />
+                <select
+                  value={teamFilter}
+                  onChange={(e) => {
+                    setTeamFilter(e.target.value);
+                    setPage(0);
+                  }}
+                  className="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                >
+                  <option value="all">全チーム</option>
+                  {teams.map((team) => (
+                    <option key={team.id} value={team.id}>
+                      {team.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
 
             {/* ステータスフィルター */}
             <div className="flex items-center gap-2">
