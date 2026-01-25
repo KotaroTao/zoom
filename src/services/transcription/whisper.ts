@@ -35,6 +35,8 @@ async function getOpenAIClient(): Promise<OpenAI> {
   const creds = await getOpenAICredentials();
   return new OpenAI({
     apiKey: creds.apiKey,
+    timeout: 600000, // 10分タイムアウト（大容量ファイル対応）
+    maxRetries: 3,   // リトライ回数
   });
 }
 
