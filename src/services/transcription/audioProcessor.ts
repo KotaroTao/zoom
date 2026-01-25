@@ -150,22 +150,31 @@ export async function extractAudio(
 
 /**
  * 必要なチャンク数を計算
+ * ネットワーク安定性のため、ファイルサイズに関係なく最大10分ごとに分割
  */
 function calculateChunkCount(
   totalDuration: number,
   estimatedBitrate: number  // bytes per second
 ): number {
-  const estimatedTotalSize = totalDuration * estimatedBitrate;
+  // 最大チャンク時間: 10分（ECONNRESET対策）
+  const maxChunkDuration = DEFAULT_CHUNK_DURATION; // 600秒 = 10分
 
-  if (estimatedTotalSize <= MAX_FILE_SIZE) {
-    return 1;
+  // ファイルサイズベースの計算
+  const estimatedTotalSize = totalDuration * estimatedBitrate;
+  let chunkCountBySize = 1;
+
+  if (estimatedTotalSize > MAX_FILE_SIZE) {
+    // 各チャンクが最大サイズの80%に収まるように
+    const targetChunkSize = MAX_FILE_SIZE * 0.8;
+    const chunkDuration = targetChunkSize / estimatedBitrate;
+    chunkCountBySize = Math.ceil(totalDuration / chunkDuration);
   }
 
-  // 各チャンクが最大サイズの80%に収まるように
-  const targetChunkSize = MAX_FILE_SIZE * 0.8;
-  const chunkDuration = targetChunkSize / estimatedBitrate;
+  // 時間ベースの計算（最大10分ごと）
+  const chunkCountByTime = Math.ceil(totalDuration / maxChunkDuration);
 
-  return Math.ceil(totalDuration / chunkDuration);
+  // より多い方を採用（より細かく分割）
+  return Math.max(chunkCountBySize, chunkCountByTime);
 }
 
 /**
