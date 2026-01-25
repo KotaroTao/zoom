@@ -421,15 +421,20 @@ export default function RecordingsPage() {
   };
 
   // 詳細要約を生成
-  const handleGenerateDetailedSummary = async () => {
+  // force=true で強制再生成（FAILED状態や既存の要約があっても再生成）
+  const handleGenerateDetailedSummary = async (force = false) => {
     if (!selectedRecording) return;
 
+    // 再生成時はステータスをリセット
+    setDetailedSummary(null);
+    setDetailedSummaryStatus('GENERATING');
     setGeneratingDetailed(true);
 
     try {
-      const result = await api.generateDetailedSummary(selectedRecording.id);
+      const result = await api.generateDetailedSummary(selectedRecording.id, force);
       if (result.cached && result.summary) {
         setDetailedSummary(result.summary);
+        setDetailedSummaryStatus('COMPLETED');
         setGeneratingDetailed(false);
       } else {
         // ポーリングで結果を取得
@@ -439,6 +444,11 @@ export default function RecordingsPage() {
             const pollResult = await api.getDetailedSummary(recordingId);
             if (pollResult.success && pollResult.summary) {
               setDetailedSummary(pollResult.summary);
+              setDetailedSummaryStatus('COMPLETED');
+              setGeneratingDetailed(false);
+              clearInterval(pollInterval);
+            } else if (pollResult.status === 'FAILED') {
+              setDetailedSummaryStatus('FAILED');
               setGeneratingDetailed(false);
               clearInterval(pollInterval);
             }
@@ -450,12 +460,16 @@ export default function RecordingsPage() {
         // 5分後にポーリング停止
         setTimeout(() => {
           clearInterval(pollInterval);
+          if (detailedSummaryStatus === 'GENERATING') {
+            setDetailedSummaryStatus('FAILED');
+          }
           setGeneratingDetailed(false);
         }, 300000);
       }
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : '詳細要約の生成に失敗しました';
       alert(`エラー: ${errorMessage}`);
+      setDetailedSummaryStatus('FAILED');
       setGeneratingDetailed(false);
     }
   };
@@ -1042,7 +1056,7 @@ export default function RecordingsPage() {
                         再度お試しください。
                       </p>
                       <button
-                        onClick={handleGenerateDetailedSummary}
+                        onClick={() => handleGenerateDetailedSummary(true)}
                         disabled={!selectedRecording.transcript}
                         className="px-6 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-lg disabled:opacity-50 flex items-center gap-2 mx-auto"
                       >
@@ -1057,7 +1071,7 @@ export default function RecordingsPage() {
                           {detailedSummary.length.toLocaleString()}文字
                         </span>
                         <button
-                          onClick={handleGenerateDetailedSummary}
+                          onClick={() => handleGenerateDetailedSummary(true)}
                           className="text-xs text-purple-600 hover:text-purple-700 flex items-center gap-1"
                         >
                           <RefreshCw className="h-3 w-3" />

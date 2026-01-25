@@ -1075,10 +1075,12 @@ apiRouter.get('/recordings/:id/report', async (req: Request, res: Response) => {
 
 /**
  * 詳細要約を生成
+ * force=true で強制的に再生成（FAILEDまたは既存の要約があっても再生成）
  */
 apiRouter.post('/recordings/:id/detailed-summary', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
+    const { force } = req.body || {};
 
     const recording = await prisma.recording.findUnique({
       where: { id },
@@ -1100,8 +1102,11 @@ apiRouter.post('/recordings/:id/detailed-summary', async (req: Request, res: Res
       return res.status(400).json({ error: '文字起こしがありません。先に再処理を実行してください。' });
     }
 
-    // 既に詳細要約がある場合は返す
-    if (recording.detailedSummary) {
+    // force=true または FAILED状態の場合は再生成を許可
+    const shouldRegenerate = force || recording.detailedSummaryStatus === 'FAILED';
+
+    // 既に詳細要約がある場合（強制再生成でない場合のみ）
+    if (recording.detailedSummary && !shouldRegenerate) {
       return res.json({
         success: true,
         summary: recording.detailedSummary,
@@ -1110,8 +1115,8 @@ apiRouter.post('/recordings/:id/detailed-summary', async (req: Request, res: Res
       });
     }
 
-    // 既に生成中の場合
-    if (recording.detailedSummaryStatus === 'GENERATING') {
+    // 既に生成中の場合（強制再生成でない場合のみ）
+    if (recording.detailedSummaryStatus === 'GENERATING' && !force) {
       return res.json({
         success: true,
         message: '詳細要約を生成中です。しばらくお待ちください。',
@@ -1119,10 +1124,13 @@ apiRouter.post('/recordings/:id/detailed-summary', async (req: Request, res: Res
       });
     }
 
-    // ステータスをGENERATINGに設定
+    // ステータスをGENERATINGに設定し、既存の要約をクリア
     await prisma.recording.update({
       where: { id },
-      data: { detailedSummaryStatus: 'GENERATING' },
+      data: {
+        detailedSummaryStatus: 'GENERATING',
+        detailedSummary: null, // 再生成時は既存の要約をクリア
+      },
     });
 
     // バックグラウンドで詳細要約を生成

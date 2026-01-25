@@ -24,6 +24,15 @@ export async function POST(
     const { organizationId } = auth;
     const { id } = await params;
 
+    // リクエストボディからforceパラメータを取得
+    let force = false;
+    try {
+      const body = await request.json();
+      force = body.force || false;
+    } catch {
+      // bodyがない場合は無視
+    }
+
     // 録画の存在確認と権限チェック
     const recording = await prisma.recording.findFirst({
       where: { id, organizationId },
@@ -36,12 +45,13 @@ export async function POST(
       );
     }
 
-    // バックエンドに詳細要約生成リクエストを送信
+    // バックエンドに詳細要約生成リクエストを送信（forceパラメータを含む）
     const backendResponse = await fetch(`${BACKEND_URL}/api/recordings/${id}/detailed-summary`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
+      body: JSON.stringify({ force }),
     });
 
     const result = await backendResponse.json();
