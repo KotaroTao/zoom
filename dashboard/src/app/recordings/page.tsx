@@ -1091,7 +1091,7 @@ export default function RecordingsPage() {
                         詳細に記録した長文の要約です。
                       </p>
                       <button
-                        onClick={handleGenerateDetailedSummary}
+                        onClick={() => handleGenerateDetailedSummary(false)}
                         disabled={!selectedRecording.transcript}
                         className="px-6 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-lg disabled:opacity-50 flex items-center gap-2 mx-auto"
                       >
