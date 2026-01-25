@@ -860,6 +860,65 @@ export default function SetupPage() {
                       </div>
                     )}
 
+                    {/* Circleback専用保存ボタン（テスト関数がないサービス用） */}
+                    {service.id === 'circleback' && (
+                      <div className="p-4 bg-white border-t border-gray-200">
+                        <div className="flex items-center gap-3">
+                          <button
+                            onClick={async () => {
+                              setTestingService('circleback');
+                              setError(null);
+                              try {
+                                if (hasCredentialsInput('circleback')) {
+                                  const serviceCreds = getServiceCredentials('circleback');
+                                  const result = await api.updateCredentials(serviceCreds as Credentials);
+                                  if (result.success) {
+                                    setSettings(prev => ({
+                                      ...prev,
+                                      circlebackWebhookSecret: result.circlebackWebhookSecret ?? prev.circlebackWebhookSecret,
+                                    }));
+                                    setCredentials(prev => ({
+                                      ...prev,
+                                      circlebackWebhookSecret: '',
+                                    }));
+                                    setTestResults(prev => ({ ...prev, circleback: { success: true, message: '保存しました' } }));
+                                    // 接続状態を再取得
+                                    const status = await api.getConnectionStatus();
+                                    setConnectionStatus(status);
+                                  }
+                                } else {
+                                  setTestResults(prev => ({ ...prev, circleback: { success: false, message: 'Signing Secretを入力してください' } }));
+                                }
+                              } catch (err) {
+                                setTestResults(prev => ({ ...prev, circleback: { success: false, message: '保存に失敗しました' } }));
+                              } finally {
+                                setTestingService(null);
+                              }
+                            }}
+                            disabled={testingService === 'circleback'}
+                            className="px-4 py-2 text-sm bg-primary-600 hover:bg-primary-700 text-white rounded-lg flex items-center transition-colors disabled:opacity-50"
+                          >
+                            {testingService === 'circleback' ? (
+                              <>
+                                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                                保存中...
+                              </>
+                            ) : (
+                              <>
+                                <Check className="h-4 w-4 mr-2" />
+                                保存
+                              </>
+                            )}
+                          </button>
+                          {testResults['circleback'] && (
+                            <span className={`text-sm ${testResults['circleback'].success ? 'text-green-600' : 'text-red-600'}`}>
+                              {testResults['circleback'].success ? '✓' : '✗'} {testResults['circleback'].message}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
                     {/* 設定手順 */}
                     <div className="p-4">
                       <h4 className="font-medium text-gray-900 mb-4">設定手順</h4>
