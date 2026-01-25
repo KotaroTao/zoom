@@ -9,6 +9,11 @@ export {
   getVideoInfo,
   deleteVideo,
 } from './upload.js';
+export {
+  downloadFromYouTube,
+  getYouTubeUrl,
+  extractVideoId,
+} from './download.js';
 export type {
   PrivacyStatus,
   UploadOptions,
@@ -18,3 +23,4 @@ export type {
   YouTubeThumbnail,
   GoogleTokens,
 } from './types.js';
+export type { YouTubeDownloadResult } from './download.js';

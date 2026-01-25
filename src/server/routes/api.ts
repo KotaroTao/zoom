@@ -857,7 +857,8 @@ apiRouter.post('/recordings/:id/generate-report', async (req: Request, res: Resp
 });
 
 /**
- * 録画の文字起こし・要約を再処理（非同期）
+ * 録画の文字起こし・要約を再処理（YouTube経由）
+ * YouTubeから動画をダウンロードして文字起こし・要約を実行
  */
 apiRouter.post('/recordings/:id/reprocess', async (req: Request, res: Response) => {
   try {
@@ -877,6 +878,13 @@ apiRouter.post('/recordings/:id/reprocess', async (req: Request, res: Response) 
       return res.status(400).json({ error: '既に処理中です' });
     }
 
+    // YouTube URLまたはVideo IDがあるか確認
+    if (!recording.youtubeUrl && !recording.youtubeVideoId) {
+      return res.status(400).json({
+        error: 'YouTube動画がありません。先にYouTubeにアップロードしてください。'
+      });
+    }
+
     // ステータスを更新
     await prisma.recording.update({
       where: { id },
@@ -884,14 +892,14 @@ apiRouter.post('/recordings/:id/reprocess', async (req: Request, res: Response) 
     });
 
     // 非同期で処理を実行（レスポンスは先に返す）
-    processReprocessing(id, recording).catch((error) => {
+    processReprocessingFromYouTube(id, recording).catch((error) => {
       console.error('Background reprocess error:', error);
     });
 
     // 即座にレスポンスを返す
     res.json({
       success: true,
-      message: '再処理を開始しました。処理には数分〜十数分かかる場合があります。',
+      message: 'YouTubeからの再処理を開始しました。処理には数分〜十数分かかる場合があります。',
       status: 'DOWNLOADING',
     });
   } catch (error) {
@@ -903,67 +911,56 @@ apiRouter.post('/recordings/:id/reprocess', async (req: Request, res: Response) 
 });
 
 /**
- * 再処理のバックグラウンド処理
+ * 再処理のバックグラウンド処理（YouTube経由）
+ * YouTubeから動画をダウンロードして文字起こし・要約を実行
  */
-async function processReprocessing(id: string, recording: { zoomMeetingUuid: string | null; zoomMeetingId: string; clientName: string | null; title: string }) {
+async function processReprocessingFromYouTube(
+  id: string,
+  recording: {
+    youtubeUrl: string | null;
+    youtubeVideoId: string | null;
+    clientName: string | null;
+    title: string;
+  }
+) {
   let downloadedFilePath: string | null = null;
 
   try {
     // インポート（動的にインポート）
-    const { zoomClient } = await import('../../services/zoom/client.js');
-    const { downloadRecordingFile } = await import('../../services/zoom/download.js');
+    const { downloadFromYouTube, getYouTubeUrl } = await import('../../services/youtube/download.js');
     const { transcribeWithWhisper } = await import('../../services/transcription/whisper.js');
     const { generateSummary, summarizeLongText } = await import('../../services/summary/openai.js');
     const { deleteFile } = await import('../../utils/fileManager.js');
 
-    // Zoom APIから録画情報を取得してダウンロード
-    let downloadUrl: string | null = null;
-
-    if (recording.zoomMeetingUuid) {
-      try {
-        const recordingDetails = await zoomClient.getRecordingDetails(recording.zoomMeetingUuid);
-        const mp4File = recordingDetails.recording_files?.find(
-          (f: { file_type: string; recording_type?: string }) =>
-            f.file_type === 'MP4' && f.recording_type === 'shared_screen_with_speaker_view'
-        ) || recordingDetails.recording_files?.find(
-          (f: { file_type: string }) => f.file_type === 'MP4'
-        );
-
-        if (mp4File && mp4File.download_url) {
-          downloadUrl = mp4File.download_url;
-        }
-      } catch (apiError) {
-        console.error('Zoom API error:', apiError);
-      }
+    // YouTube URLを取得
+    let youtubeUrl = recording.youtubeUrl;
+    if (!youtubeUrl && recording.youtubeVideoId) {
+      youtubeUrl = getYouTubeUrl(recording.youtubeVideoId);
     }
 
-    if (!downloadUrl) {
+    if (!youtubeUrl) {
       await prisma.recording.update({
         where: { id },
-        data: { status: 'FAILED', errorMessage: 'Zoom録画URLを取得できませんでした' },
+        data: { status: 'FAILED', errorMessage: 'YouTube URLが見つかりません' },
       });
       return;
     }
 
-    // ダウンロード
-    const downloadResult = await downloadRecordingFile({
-      fileId: recording.zoomMeetingId,
-      fileType: 'MP4',
-      recordingType: 'shared_screen_with_speaker_view',
-      downloadUrl,
-      fileSize: 0,
-      fileName: `reprocess-${id}.mp4`,
-    });
+    console.log(`YouTubeからダウンロード開始: ${youtubeUrl}`);
+
+    // YouTubeからダウンロード
+    const downloadResult = await downloadFromYouTube(youtubeUrl, `reprocess-${id}`);
 
     if (!downloadResult.success || !downloadResult.filePath) {
       await prisma.recording.update({
         where: { id },
-        data: { status: 'FAILED', errorMessage: `ダウンロード失敗: ${downloadResult.error}` },
+        data: { status: 'FAILED', errorMessage: `YouTubeダウンロード失敗: ${downloadResult.error}` },
       });
       return;
     }
 
     downloadedFilePath = downloadResult.filePath;
+    console.log(`YouTubeダウンロード完了: ${downloadedFilePath}`);
 
     // 文字起こし
     await prisma.recording.update({
@@ -984,6 +981,7 @@ async function processReprocessing(id: string, recording: { zoomMeetingUuid: str
     }
 
     const transcript = transcriptionResult.text;
+    console.log(`文字起こし完了: ${transcript.length}文字`);
 
     // 要約
     await prisma.recording.update({
@@ -991,7 +989,7 @@ async function processReprocessing(id: string, recording: { zoomMeetingUuid: str
       data: { status: 'SUMMARIZING', transcript, transcribedAt: new Date() },
     });
 
-    // 長い文字起こしの場合は分割要約を使用（40,000文字以上）
+    // 長い文字起こしの場合は分割要約を使用
     const summaryOptions = {
       clientName: recording.clientName || undefined,
       meetingTitle: recording.title,
@@ -1019,7 +1017,7 @@ async function processReprocessing(id: string, recording: { zoomMeetingUuid: str
       },
     });
 
-    console.log(`Reprocess completed for recording ${id}`);
+    console.log(`YouTube経由の再処理完了: recording ${id}`);
   } catch (error) {
     console.error('Reprocess background error:', error);
     await prisma.recording.update({
