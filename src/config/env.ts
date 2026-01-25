@@ -30,7 +30,7 @@ const envSchema = z.object({
   // OpenAI
   OPENAI_API_KEY: z.string().min(1, 'OPENAI_API_KEY is required'),
   OPENAI_WHISPER_MODEL: z.string().default('whisper-1'),
-  OPENAI_GPT_MODEL: z.string().default('gpt-4-turbo-preview'),
+  OPENAI_GPT_MODEL: z.string().default('gpt-4o-mini'),
 
   // Google Sheets
   GOOGLE_SPREADSHEET_ID: z.string().min(1, 'GOOGLE_SPREADSHEET_ID is required'),
