@@ -10,13 +10,17 @@ import {
   RefreshCw,
   FileText,
   MessageSquare,
+  CheckSquare,
+  BarChart3,
 } from 'lucide-react';
 
 const navigation = [
   { name: 'ダッシュボード', href: '/', icon: Home },
-  { name: '録画一覧', href: '/recordings', icon: Video },
-  { name: 'Circleback', href: '/circleback', icon: MessageSquare },
+  { name: 'タスク', href: '/tasks', icon: CheckSquare },
+  { name: 'レポート', href: '/reports', icon: BarChart3 },
+  { name: 'ミーティング', href: '/circleback', icon: MessageSquare },
   { name: 'クライアント', href: '/clients', icon: Users },
+  { name: '録画一覧', href: '/recordings', icon: Video },
   { name: 'テンプレート', href: '/templates', icon: FileText },
   { name: 'セットアップ', href: '/setup', icon: Settings },
 ];

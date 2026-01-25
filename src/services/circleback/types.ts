@@ -18,6 +18,7 @@ export interface CirclebackActionItemPayload {
     email: string;
   } | null;
   status: 'PENDING' | 'COMPLETED';
+  dueDate?: string;  // ISO 8601 形式の期限日
 }
 
 // Circleback Webhook ペイロード
@@ -62,5 +63,6 @@ export interface CirclebackMeetingData {
     status: string;
     assigneeName?: string;
     assigneeEmail?: string;
+    dueDate?: Date;
   }>;
 }

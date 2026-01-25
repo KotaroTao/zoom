@@ -63,8 +63,70 @@ export function parseWebhookPayload(payload: CirclebackWebhookPayload): Circleba
       status: item.status,
       assigneeName: item.assignee?.name,
       assigneeEmail: item.assignee?.email,
+      dueDate: item.dueDate ? new Date(item.dueDate) : undefined,
     })),
   };
+}
+
+/**
+ * 参加者メールからクライアントを自動マッチング
+ */
+export async function matchClientByAttendees(
+  organizationId: string,
+  attendees: Array<{ name: string; email: string }>
+): Promise<string | null> {
+  try {
+    // 組織のクライアント一覧を取得（emailDomainsが設定されているもの）
+    const clients = await prisma.client.findMany({
+      where: {
+        organizationId,
+        isActive: true,
+        emailDomains: { not: null },
+      },
+      select: {
+        id: true,
+        name: true,
+        emailDomains: true,
+      },
+    });
+
+    if (clients.length === 0) {
+      return null;
+    }
+
+    // 参加者のメールドメインを抽出
+    const attendeeDomains = attendees
+      .map((a) => a.email.split('@')[1]?.toLowerCase())
+      .filter(Boolean);
+
+    // 各クライアントのドメインと照合
+    for (const client of clients) {
+      if (!client.emailDomains) continue;
+
+      const clientDomains = client.emailDomains
+        .split(',')
+        .map((d) => d.trim().toLowerCase());
+
+      // マッチするドメインがあればそのクライアントを返す
+      const matched = attendeeDomains.some((domain) =>
+        clientDomains.includes(domain)
+      );
+
+      if (matched) {
+        logger.info('クライアント自動マッチング成功', {
+          organizationId,
+          clientId: client.id,
+          clientName: client.name,
+        });
+        return client.id;
+      }
+    }
+
+    return null;
+  } catch (error) {
+    logger.error('クライアント自動マッチングエラー', { organizationId, error });
+    return null;
+  }
 }
 
 /**
@@ -81,6 +143,9 @@ export async function saveCirclebackMeeting(
       name: data.name,
     });
 
+    // 参加者メールからクライアントを自動マッチング
+    const clientId = await matchClientByAttendees(organizationId, data.attendees);
+
     // upsertでミーティングを保存（既存の場合は更新）
     const meeting = await prisma.circlebackMeeting.upsert({
       where: {
@@ -91,6 +156,7 @@ export async function saveCirclebackMeeting(
       },
       create: {
         organizationId,
+        clientId,
         circlebackId: data.circlebackId,
         name: data.name,
         notes: data.notes,
@@ -111,6 +177,8 @@ export async function saveCirclebackMeeting(
         icalUid: data.icalUid,
         tags: data.tags ? JSON.stringify(data.tags) : null,
         attendees: JSON.stringify(data.attendees),
+        // 既存のclientIdがない場合のみ更新
+        ...(clientId && { clientId }),
       },
     });
 
@@ -130,12 +198,14 @@ export async function saveCirclebackMeeting(
           status: item.status,
           assigneeName: item.assigneeName,
           assigneeEmail: item.assigneeEmail,
+          dueDate: item.dueDate,
         })),
       });
     }
 
     logger.info('Circlebackミーティング保存完了', {
       meetingId: meeting.id,
+      clientId,
       actionItemCount: data.actionItems.length,
     });
 
@@ -356,4 +426,347 @@ export async function updateActionItemStatus(
     logger.error('アクションアイテム更新失敗', { actionItemId, error });
     return false;
   }
+}
+
+/**
+ * 全アクションアイテム一覧を取得（フィルタリング対応）
+ */
+export async function getAllActionItems(
+  organizationId: string,
+  options: {
+    status?: 'PENDING' | 'COMPLETED' | 'ALL';
+    clientId?: string;
+    overdue?: boolean;
+    limit?: number;
+    offset?: number;
+  } = {}
+): Promise<{
+  items: Array<{
+    id: string;
+    title: string;
+    description: string | null;
+    status: string;
+    assigneeName: string | null;
+    assigneeEmail: string | null;
+    dueDate: Date | null;
+    isOverdue: boolean;
+    meeting: {
+      id: string;
+      name: string;
+      circlebackCreatedAt: Date;
+    };
+    client: {
+      id: string;
+      name: string;
+    } | null;
+  }>;
+  total: number;
+}> {
+  const { status = 'ALL', clientId, overdue, limit = 50, offset = 0 } = options;
+  const now = new Date();
+
+  const where: any = {
+    meeting: {
+      organizationId,
+      ...(clientId && { clientId }),
+    },
+    ...(status !== 'ALL' && { status }),
+  };
+
+  // 期限切れフィルタ
+  if (overdue) {
+    where.dueDate = { lt: now };
+    where.status = 'PENDING';
+  }
+
+  const [items, total] = await Promise.all([
+    prisma.circlebackActionItem.findMany({
+      where,
+      orderBy: [
+        { dueDate: 'asc' },
+        { createdAt: 'desc' },
+      ],
+      take: limit,
+      skip: offset,
+      include: {
+        meeting: {
+          select: {
+            id: true,
+            name: true,
+            circlebackCreatedAt: true,
+            client: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+          },
+        },
+      },
+    }),
+    prisma.circlebackActionItem.count({ where }),
+  ]);
+
+  return {
+    items: items.map((item) => ({
+      id: item.id,
+      title: item.title,
+      description: item.description,
+      status: item.status,
+      assigneeName: item.assigneeName,
+      assigneeEmail: item.assigneeEmail,
+      dueDate: item.dueDate,
+      isOverdue: item.dueDate ? item.dueDate < now && item.status === 'PENDING' : false,
+      meeting: {
+        id: item.meeting.id,
+        name: item.meeting.name,
+        circlebackCreatedAt: item.meeting.circlebackCreatedAt,
+      },
+      client: item.meeting.client,
+    })),
+    total,
+  };
+}
+
+/**
+ * 期限切れアクションアイテムのサマリーを取得
+ */
+export async function getOverdueActionItemsSummary(
+  organizationId: string
+): Promise<{
+  total: number;
+  byClient: Array<{ clientId: string | null; clientName: string; count: number }>;
+}> {
+  const now = new Date();
+
+  const overdueItems = await prisma.circlebackActionItem.findMany({
+    where: {
+      meeting: { organizationId },
+      status: 'PENDING',
+      dueDate: { lt: now },
+    },
+    include: {
+      meeting: {
+        select: {
+          client: {
+            select: { id: true, name: true },
+          },
+        },
+      },
+    },
+  });
+
+  // クライアント別に集計
+  const byClientMap = new Map<string, { clientId: string | null; clientName: string; count: number }>();
+  for (const item of overdueItems) {
+    const clientId = item.meeting.client?.id || 'none';
+    const clientName = item.meeting.client?.name || '未分類';
+    const existing = byClientMap.get(clientId);
+    if (existing) {
+      existing.count++;
+    } else {
+      byClientMap.set(clientId, {
+        clientId: item.meeting.client?.id || null,
+        clientName,
+        count: 1,
+      });
+    }
+  }
+
+  return {
+    total: overdueItems.length,
+    byClient: Array.from(byClientMap.values()).sort((a, b) => b.count - a.count),
+  };
+}
+
+/**
+ * クライアント別レポートデータを取得
+ */
+export async function getClientReportData(
+  organizationId: string,
+  clientId: string,
+  startDate: Date,
+  endDate: Date
+): Promise<{
+  client: { id: string; name: string } | null;
+  period: { start: Date; end: Date };
+  meetings: Array<{
+    id: string;
+    name: string;
+    date: Date;
+    duration: number | null;
+    notesSummary: string | null;
+    actionItems: Array<{
+      title: string;
+      status: string;
+      assigneeName: string | null;
+      dueDate: Date | null;
+    }>;
+  }>;
+  actionItemsSummary: {
+    total: number;
+    completed: number;
+    pending: number;
+    overdue: number;
+  };
+}> {
+  const now = new Date();
+
+  const client = await prisma.client.findFirst({
+    where: { id: clientId, organizationId },
+    select: { id: true, name: true },
+  });
+
+  const meetings = await prisma.circlebackMeeting.findMany({
+    where: {
+      organizationId,
+      clientId,
+      circlebackCreatedAt: {
+        gte: startDate,
+        lte: endDate,
+      },
+    },
+    orderBy: { circlebackCreatedAt: 'desc' },
+    include: {
+      actionItems: true,
+    },
+  });
+
+  // アクションアイテムサマリー計算
+  let total = 0, completed = 0, pending = 0, overdue = 0;
+  for (const meeting of meetings) {
+    for (const item of meeting.actionItems) {
+      total++;
+      if (item.status === 'COMPLETED') {
+        completed++;
+      } else {
+        pending++;
+        if (item.dueDate && item.dueDate < now) {
+          overdue++;
+        }
+      }
+    }
+  }
+
+  return {
+    client,
+    period: { start: startDate, end: endDate },
+    meetings: meetings.map((m) => ({
+      id: m.id,
+      name: m.name,
+      date: m.circlebackCreatedAt,
+      duration: m.duration,
+      notesSummary: m.notes ? m.notes.substring(0, 500) : null,
+      actionItems: m.actionItems.map((a) => ({
+        title: a.title,
+        status: a.status,
+        assigneeName: a.assigneeName,
+        dueDate: a.dueDate,
+      })),
+    })),
+    actionItemsSummary: { total, completed, pending, overdue },
+  };
+}
+
+/**
+ * 週次/月次レポート用のサマリーデータを取得
+ */
+export async function getPeriodicReportData(
+  organizationId: string,
+  period: 'weekly' | 'monthly'
+): Promise<{
+  period: { start: Date; end: Date; label: string };
+  totalMeetings: number;
+  totalDuration: number;
+  byClient: Array<{
+    client: { id: string; name: string } | null;
+    meetingCount: number;
+    totalDuration: number;
+    actionItems: { total: number; completed: number; pending: number };
+  }>;
+  newActionItems: number;
+  completedActionItems: number;
+  overdueActionItems: number;
+}> {
+  const now = new Date();
+  let startDate: Date;
+  let label: string;
+
+  if (period === 'weekly') {
+    // 今週の月曜日から
+    const dayOfWeek = now.getDay();
+    const diff = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+    startDate = new Date(now);
+    startDate.setDate(now.getDate() - diff);
+    startDate.setHours(0, 0, 0, 0);
+    label = `${startDate.getMonth() + 1}/${startDate.getDate()} - ${now.getMonth() + 1}/${now.getDate()}`;
+  } else {
+    // 今月の1日から
+    startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+    label = `${now.getFullYear()}年${now.getMonth() + 1}月`;
+  }
+
+  const meetings = await prisma.circlebackMeeting.findMany({
+    where: {
+      organizationId,
+      circlebackCreatedAt: { gte: startDate, lte: now },
+    },
+    include: {
+      client: { select: { id: true, name: true } },
+      actionItems: true,
+    },
+  });
+
+  // クライアント別集計
+  const byClientMap = new Map<string, {
+    client: { id: string; name: string } | null;
+    meetingCount: number;
+    totalDuration: number;
+    actionItems: { total: number; completed: number; pending: number };
+  }>();
+
+  let totalDuration = 0;
+  let newActionItems = 0;
+  let completedActionItems = 0;
+  let overdueActionItems = 0;
+
+  for (const meeting of meetings) {
+    const clientKey = meeting.client?.id || 'none';
+    const existing = byClientMap.get(clientKey) || {
+      client: meeting.client || null,
+      meetingCount: 0,
+      totalDuration: 0,
+      actionItems: { total: 0, completed: 0, pending: 0 },
+    };
+
+    existing.meetingCount++;
+    existing.totalDuration += meeting.duration || 0;
+    totalDuration += meeting.duration || 0;
+
+    for (const item of meeting.actionItems) {
+      existing.actionItems.total++;
+      newActionItems++;
+      if (item.status === 'COMPLETED') {
+        existing.actionItems.completed++;
+        completedActionItems++;
+      } else {
+        existing.actionItems.pending++;
+        if (item.dueDate && item.dueDate < now) {
+          overdueActionItems++;
+        }
+      }
+    }
+
+    byClientMap.set(clientKey, existing);
+  }
+
+  return {
+    period: { start: startDate, end: now, label },
+    totalMeetings: meetings.length,
+    totalDuration,
+    byClient: Array.from(byClientMap.values()).sort((a, b) => b.meetingCount - a.meetingCount),
+    newActionItems,
+    completedActionItems,
+    overdueActionItems,
+  };
 }

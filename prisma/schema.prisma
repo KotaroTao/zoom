@@ -220,11 +220,15 @@ model Client {
   contactType    String?  // ツール種別 - 後方互換性のため残す
   isActive       Boolean  @default(true)
 
+  // メールドメインでの自動マッチング用
+  emailDomains   String?  // カンマ区切りのドメインリスト（例: "example.com,example.co.jp"）
+
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
   // リレーション
   contacts       ClientContact[]
+  circlebackMeetings CirclebackMeeting[]
 
   @@unique([organizationId, name])
   @@index([organizationId])
@@ -332,6 +336,10 @@ model CirclebackMeeting {
   organizationId    String
   organization      Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
+  // クライアント紐付け（参加者メールから自動マッチ）
+  clientId          String?
+  client            Client?  @relation(fields: [clientId], references: [id], onDelete: SetNull)
+
   // Circlebackからの情報
   circlebackId      String   // Circlebackのミーティング ID
   name              String   // ミーティング名
@@ -359,6 +367,7 @@ model CirclebackMeeting {
   // インデックス
   @@unique([organizationId, circlebackId])
   @@index([organizationId])
+  @@index([clientId])
   @@index([circlebackCreatedAt])
 }
 
@@ -379,10 +388,12 @@ model CirclebackActionItem {
   status            String   @default("PENDING")  // PENDING, COMPLETED
   assigneeName      String?  // 担当者名
   assigneeEmail     String?  // 担当者メール
+  dueDate           DateTime? // 期限日
 
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
   @@index([meetingId])
   @@index([status])
+  @@index([dueDate])
 }

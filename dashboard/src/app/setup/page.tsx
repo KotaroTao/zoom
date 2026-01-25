@@ -340,35 +340,6 @@ export default function SetupPage() {
       ],
     },
     {
-      id: 'openai',
-      name: 'OpenAI API',
-      icon: <Zap className="h-5 w-5" />,
-      color: 'text-green-500',
-      description: '文字起こし（Whisper）と要約生成（GPT）に必要',
-      testFn: api.testOpenAI,
-      steps: [
-        {
-          id: 'openai-1',
-          title: 'APIキーを取得',
-          description: 'OpenAIダッシュボードでキーを発行',
-          instructions: [
-            'OpenAI Platform →「API keys」→「Create new secret key」',
-            '表示されたキーをコピー（一度のみ表示）',
-          ],
-          links: [{ label: 'OpenAI API Keys', url: 'https://platform.openai.com/api-keys' }],
-        },
-        {
-          id: 'openai-2',
-          title: '接続テスト',
-          description: 'キーを入力して接続確認',
-          instructions: [
-            '上のフォームにAPIキーを入力',
-            '「保存して接続テスト」をクリック',
-          ],
-        },
-      ],
-    },
-    {
       id: 'google',
       name: 'Google / YouTube API',
       icon: <Youtube className="h-5 w-5" />,
@@ -1012,85 +983,6 @@ export default function SetupPage() {
                     <option value="private">非公開</option>
                     <option value="unlisted">限定公開</option>
                     <option value="public">公開</option>
-                  </select>
-                </div>
-              )}
-            </div>
-
-            {/* 文字起こし */}
-            <div className={`card p-4 ${!isServiceConnected('openai') ? 'opacity-60' : ''}`}>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <FileText className="h-5 w-5 text-blue-500" />
-                  <div>
-                    <p className="font-medium text-gray-900">文字起こし（Whisper）</p>
-                    <p className="text-xs text-gray-500">
-                      {isServiceConnected('openai')
-                        ? 'OpenAI Whisperで自動的に文字起こし'
-                        : 'OpenAI APIの接続が必要です'}
-                    </p>
-                  </div>
-                </div>
-                <label className={`relative inline-flex items-center ${isServiceConnected('openai') ? 'cursor-pointer' : 'cursor-not-allowed'}`}>
-                  <input
-                    type="checkbox"
-                    checked={settings.transcriptionEnabled && isServiceConnected('openai')}
-                    onChange={(e) => handleSettingsChange('transcriptionEnabled', e.target.checked)}
-                    disabled={!isServiceConnected('openai')}
-                    className="sr-only peer"
-                  />
-                  <div className={`w-11 h-6 bg-gray-200 peer-focus:ring-4 peer-focus:ring-primary-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-600 ${!isServiceConnected('openai') ? 'peer-checked:bg-gray-400' : ''}`}></div>
-                </label>
-              </div>
-              {settings.transcriptionEnabled && isServiceConnected('openai') && (
-                <div className="mt-3 pl-8">
-                  <select
-                    value={settings.transcriptionLanguage}
-                    onChange={(e) => handleSettingsChange('transcriptionLanguage', e.target.value)}
-                    className="text-sm border border-gray-300 rounded-lg px-3 py-1.5"
-                  >
-                    <option value="ja">日本語</option>
-                    <option value="en">英語</option>
-                    <option value="auto">自動検出</option>
-                  </select>
-                </div>
-              )}
-            </div>
-
-            {/* 要約 */}
-            <div className={`card p-4 ${!isServiceConnected('openai') ? 'opacity-60' : ''}`}>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <SettingsIcon className="h-5 w-5 text-purple-500" />
-                  <div>
-                    <p className="font-medium text-gray-900">要約生成（GPT-4）</p>
-                    <p className="text-xs text-gray-500">
-                      {isServiceConnected('openai')
-                        ? 'GPT-4でミーティング内容を自動要約'
-                        : 'OpenAI APIの接続が必要です'}
-                    </p>
-                  </div>
-                </div>
-                <label className={`relative inline-flex items-center ${isServiceConnected('openai') ? 'cursor-pointer' : 'cursor-not-allowed'}`}>
-                  <input
-                    type="checkbox"
-                    checked={settings.summaryEnabled && isServiceConnected('openai')}
-                    onChange={(e) => handleSettingsChange('summaryEnabled', e.target.checked)}
-                    disabled={!isServiceConnected('openai')}
-                    className="sr-only peer"
-                  />
-                  <div className={`w-11 h-6 bg-gray-200 peer-focus:ring-4 peer-focus:ring-primary-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-600 ${!isServiceConnected('openai') ? 'peer-checked:bg-gray-400' : ''}`}></div>
-                </label>
-              </div>
-              {settings.summaryEnabled && isServiceConnected('openai') && (
-                <div className="mt-3 pl-8">
-                  <select
-                    value={settings.summaryStyle}
-                    onChange={(e) => handleSettingsChange('summaryStyle', e.target.value)}
-                    className="text-sm border border-gray-300 rounded-lg px-3 py-1.5"
-                  >
-                    <option value="brief">簡潔</option>
-                    <option value="detailed">詳細</option>
                   </select>
                 </div>
               )}

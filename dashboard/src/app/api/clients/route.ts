@@ -24,6 +24,7 @@ interface ClientInfo {
   contactUrl?: string | null;
   contactType?: string | null;
   contacts?: ContactInfo[];
+  emailDomains?: string | null;
   isActive?: boolean;
   recordingCount: number;
   totalDuration: number;
@@ -93,6 +94,7 @@ export async function GET() {
       zoomUrl: string | null;
       contactUrl: string | null;
       contactType: string | null;
+      emailDomains: string | null;
       isActive: boolean;
       contacts: { id: string; type: string; url: string; label: string | null; sortOrder: number }[];
     }) => {
@@ -106,6 +108,7 @@ export async function GET() {
         zoomUrl: client.zoomUrl,
         contactUrl: client.contactUrl,
         contactType: client.contactType,
+        emailDomains: client.emailDomains,
         contacts: client.contacts.map(c => ({
           id: c.id,
           type: c.type,
@@ -153,7 +156,7 @@ export async function POST(request: NextRequest) {
   try {
     const { organizationId } = auth;
     const body = await request.json();
-    const { name, description, color, zoomUrl, contactUrl, contactType, contacts } = body;
+    const { name, description, color, zoomUrl, contactUrl, contactType, contacts, emailDomains } = body;
 
     if (!name || typeof name !== 'string' || name.trim() === '') {
       return NextResponse.json(
@@ -189,6 +192,7 @@ export async function POST(request: NextRequest) {
         zoomUrl: zoomUrl || null,
         contactUrl: contactUrl || null,
         contactType: contactType || null,
+        emailDomains: emailDomains || null,
         contacts: contacts && Array.isArray(contacts) ? {
           create: contacts.map((c: ContactInfo, index: number) => ({
             type: c.type,
@@ -225,7 +229,7 @@ export async function PUT(request: NextRequest) {
   try {
     const { organizationId } = auth;
     const body = await request.json();
-    const { id, name, description, color, zoomUrl, contactUrl, contactType, contacts, isActive } = body;
+    const { id, name, description, color, zoomUrl, contactUrl, contactType, contacts, emailDomains, isActive } = body;
 
     if (!id) {
       return NextResponse.json(
@@ -279,6 +283,7 @@ export async function PUT(request: NextRequest) {
           ...(zoomUrl !== undefined && { zoomUrl: zoomUrl || null }),
           ...(contactUrl !== undefined && { contactUrl: contactUrl || null }),
           ...(contactType !== undefined && { contactType: contactType || null }),
+          ...(emailDomains !== undefined && { emailDomains: emailDomains || null }),
           ...(isActive !== undefined && { isActive }),
         },
         include: {

@@ -79,6 +79,7 @@ export default function ClientsPage() {
     description: '',
     color: '#3B82F6',
     zoomUrl: '',
+    emailDomains: '',
     contacts: [] as { type: string; url: string; label: string }[],
   });
   const [saving, setSaving] = useState(false);
@@ -109,6 +110,7 @@ export default function ClientsPage() {
         description: client.description || '',
         color: client.color || '#3B82F6',
         zoomUrl: client.zoomUrl || '',
+        emailDomains: client.emailDomains || '',
         contacts: client.contacts?.map(c => ({
           type: c.type,
           url: c.url,
@@ -117,7 +119,7 @@ export default function ClientsPage() {
       });
     } else {
       setEditingClient(null);
-      setFormData({ name: '', description: '', color: '#3B82F6', zoomUrl: '', contacts: [] });
+      setFormData({ name: '', description: '', color: '#3B82F6', zoomUrl: '', emailDomains: '', contacts: [] });
     }
     setShowModal(true);
   };
@@ -125,7 +127,7 @@ export default function ClientsPage() {
   const handleCloseModal = () => {
     setShowModal(false);
     setEditingClient(null);
-    setFormData({ name: '', description: '', color: '#3B82F6', zoomUrl: '', contacts: [] });
+    setFormData({ name: '', description: '', color: '#3B82F6', zoomUrl: '', emailDomains: '', contacts: [] });
   };
 
   // 連絡先を追加
@@ -178,6 +180,7 @@ export default function ClientsPage() {
           description: formData.description || undefined,
           color: formData.color,
           zoomUrl: formData.zoomUrl || undefined,
+          emailDomains: formData.emailDomains || undefined,
           contacts: validContacts,
         });
       } else {
@@ -186,6 +189,7 @@ export default function ClientsPage() {
           description: formData.description || undefined,
           color: formData.color,
           zoomUrl: formData.zoomUrl || undefined,
+          emailDomains: formData.emailDomains || undefined,
           contacts: validContacts,
         });
       }
@@ -484,6 +488,21 @@ export default function ClientsPage() {
                 />
                 <p className="text-xs text-gray-500 mt-1">
                   このURLで行われたミーティングは自動的にこのクライアントに割り当てられます
+                </p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  メールドメイン（任意）
+                </label>
+                <input
+                  type="text"
+                  value={formData.emailDomains}
+                  onChange={(e) => setFormData({ ...formData, emailDomains: e.target.value })}
+                  placeholder="example.com, example.co.jp"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Circlebackミーティングの参加者メールドメインで自動マッチング（カンマ区切りで複数指定可）
                 </p>
               </div>
               <div>

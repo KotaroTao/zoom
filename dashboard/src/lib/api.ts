@@ -92,6 +92,7 @@ export interface Client {
   zoomUrl?: string | null;
   contactUrl?: string | null;
   contactType?: string | null;
+  emailDomains?: string | null;
   contacts?: ClientContact[];
   isActive?: boolean;
   recordingCount: number;
