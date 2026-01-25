@@ -31,6 +31,8 @@ async function getOpenAIClient(): Promise<OpenAI> {
   const creds = await getOpenAICredentials();
   return new OpenAI({
     apiKey: creds.apiKey,
+    timeout: 120000, // 120秒タイムアウト（ファイルアップロード用に長めに設定）
+    maxRetries: 0, // リトライは独自実装で行うため無効化
   });
 }
 
@@ -57,6 +59,56 @@ function extractContextFromText(text: string, maxLength: number = 200): string {
 }
 
 /**
+ * リトライ付きでAPI呼び出しを実行
+ */
+async function withRetry<T>(
+  fn: () => Promise<T>,
+  maxRetries: number = 3,
+  baseDelay: number = 2000
+): Promise<T> {
+  let lastError: Error | undefined;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (error: unknown) {
+      // エラー詳細をログ出力
+      const errorObj = error as Record<string, unknown>;
+      logger.error('Whisper API エラー詳細', {
+        attempt: attempt + 1,
+        name: errorObj?.name,
+        message: errorObj?.message,
+        code: errorObj?.code,
+        cause: errorObj?.cause,
+        stack: errorObj?.stack?.toString().slice(0, 500),
+      });
+
+      lastError = error instanceof Error ? error : new Error(String(error));
+
+      // 最後の試行の場合はエラーを投げる
+      if (attempt === maxRetries) {
+        throw lastError;
+      }
+
+      // Connection errorの場合のみリトライ
+      const errorMessage = lastError.message.toLowerCase();
+      if (errorMessage.includes('connection') || errorMessage.includes('timeout') || errorMessage.includes('econnreset') || errorMessage.includes('fetch')) {
+        const delay = baseDelay * Math.pow(2, attempt);
+        logger.warn(`API接続エラー、${delay}ms後にリトライ (${attempt + 1}/${maxRetries})`, {
+          error: lastError.message,
+        });
+        await new Promise(resolve => setTimeout(resolve, delay));
+      } else {
+        // その他のエラーはリトライしない
+        throw lastError;
+      }
+    }
+  }
+
+  throw lastError;
+}
+
+/**
  * 単一ファイルの文字起こし（内部用）
  */
 async function transcribeSingleFile(
@@ -70,19 +122,36 @@ async function transcribeSingleFile(
   language?: string;
   segments?: TranscriptionSegment[];
 }> {
+  // 絶対パスに変換
+  const absolutePath = path.resolve(process.cwd(), filePath);
+
+  // ファイル存在確認
+  if (!fs.existsSync(absolutePath)) {
+    throw new Error(`ファイルが見つかりません: ${absolutePath}`);
+  }
+
+  const fileStats = fs.statSync(absolutePath);
+  logger.info('Whisper API呼び出し準備', {
+    filePath: absolutePath,
+    fileSize: `${(fileStats.size / 1024 / 1024).toFixed(2)} MB`,
+  });
+
   // プロンプトを構築（デフォルト + コンテキスト）
   const basePrompt = options.prompt || 'これは日本語のミーティング録音です。';
   const fullPrompt = contextPrompt
     ? `${basePrompt} 前の内容: ${contextPrompt}`
     : basePrompt;
 
-  const response = await openai.audio.transcriptions.create({
-    file: fs.createReadStream(filePath),
-    model: 'whisper-1',
-    language: options.language || 'ja',
-    response_format: options.responseFormat || 'verbose_json',
-    temperature: options.temperature ?? 0,
-    prompt: fullPrompt,
+  // リトライ付きでAPI呼び出し
+  const response = await withRetry(async () => {
+    return await openai.audio.transcriptions.create({
+      file: fs.createReadStream(absolutePath),
+      model: 'whisper-1',
+      language: options.language || 'ja',
+      response_format: options.responseFormat || 'verbose_json',
+      temperature: options.temperature ?? 0,
+      prompt: fullPrompt,
+    });
   });
 
   // レスポンス形式に応じて処理

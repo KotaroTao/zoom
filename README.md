@@ -757,6 +757,115 @@ c0e6280 feat: 詳細要約（長文・包括的要約）機能を追加
 
 ---
 
+## 次期開発計画: Circleback連携（TODO）
+
+### 背景
+
+現在のコスト構造（100動画/日の場合）:
+- Whisper API: 約16万円/月
+- GPT-4o-mini: 約6千円/月
+- **合計: 約17万円/月**
+
+Circleback連携により、文字起こし・要約コストを大幅削減可能。
+
+### 変更計画
+
+#### 維持する機能（変更なし）
+- YouTubeへの自動アップロード
+- Google Sheets連携
+- Notion連携
+- ダッシュボード
+- 報告書生成（GPT-4o-mini）
+- クライアント管理
+
+#### Circlebackに置き換える機能
+| 現在 | 変更後 |
+|------|--------|
+| Whisper API（文字起こし） | Circleback Webhook受信 |
+| GPT要約（通常要約） | Circleback議事録（Notes） |
+| 再処理（YouTube経由ダウンロード） | Circlebackから再取得 |
+
+#### Circlebackから受信するデータ
+- ミーティング情報（会議名・日時）
+- 議事録（Notes）→ `summary`フィールドに保存
+- 文字起こし（Transcript）→ `transcript`フィールドに保存
+- アクションアイテム → 新規フィールド追加
+- インサイト → 新規フィールド追加
+
+### アーキテクチャ変更
+
+```
+【現在】
+Zoom Webhook → ダウンロード → YouTube UP → Whisper → GPT → Sheets/Notion
+                                              ↑         ↑
+                                          （削除）   （削除）
+
+【変更後】
+Zoom Webhook → YouTube UP → Sheets/Notion記録（基本情報のみ）
+                    ↓
+              Circlebackへ録画リンク共有（手動 or Zapier）
+                    ↓
+              Circleback処理
+                    ↓
+         Circleback Webhook → 当システム受信
+                    ↓
+              文字起こし・要約をDB保存 → Sheets/Notion更新
+```
+
+### 実装タスク
+
+#### Phase 1: Webhook受信エンドポイント作成
+- [ ] `POST /webhook/circleback` エンドポイント追加
+- [ ] Circlebackからのペイロード解析
+- [ ] 録画レコードとの紐付けロジック
+
+#### Phase 2: データモデル更新
+- [ ] `Recording`テーブルにフィールド追加
+  - `circlebackMeetingId` - Circleback側のID
+  - `actionItems` - アクションアイテム（JSON）
+  - `insights` - インサイト（JSON）
+  - `circlebackProcessedAt` - Circleback処理完了日時
+- [ ] Prismaスキーマ更新
+
+#### Phase 3: 処理フロー変更
+- [ ] Whisper API呼び出しをCircleback受信に置換
+- [ ] GPT要約をCircleback議事録に置換
+- [ ] 再処理機能をCircleback再取得に変更
+
+#### Phase 4: ダッシュボード更新
+- [ ] Circlebackステータス表示
+- [ ] 手動でCircleback処理をトリガーするボタン（必要に応じて）
+
+### 関連ファイル
+
+| ファイル | 変更内容 |
+|---------|---------|
+| `src/server/routes/api.ts` | Circleback Webhookエンドポイント追加 |
+| `src/queue/worker.ts` | Whisper/GPT処理の条件分岐追加 |
+| `prisma/schema.prisma` | 新規フィールド追加 |
+| `dashboard/src/app/setup/page.tsx` | Circleback設定セクション追加 |
+
+### Circleback設定（必要な認証情報）
+- Circleback Webhook URL（当システムのURL）
+- Webhook Secret（署名検証用）
+- Zapier連携（オプション）
+
+### 参考リンク
+- [Circleback Webhook Integration](https://circleback.ai/releases)
+- [Circleback Zapier Integration](https://circleback.ai/docs/zapier-integration)
+
+### コスト比較
+
+| 項目 | 現在 | Circleback連携後 |
+|------|------|------------------|
+| 文字起こし | Whisper API $0.36/動画 | **$0**（Circleback含む） |
+| 通常要約 | GPT-4o-mini $0.02/動画 | **$0**（Circleback含む） |
+| 詳細要約 | GPT-4o-mini $0.02/動画 | 維持 |
+| Circleback | - | $25-100/月（プラン次第） |
+| **月間（100動画/日）** | 約17万円 | **約1-3万円** |
+
+---
+
 ## データベース管理（本番環境）
 
 ### データベース構成

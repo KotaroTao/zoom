@@ -541,11 +541,15 @@ export const api = {
 
   /**
    * 詳細要約を生成
+   * @param force - true の場合、FAILEDまたは既存の要約があっても強制的に再生成
    */
-  generateDetailedSummary: (recordingId: string) =>
+  generateDetailedSummary: (recordingId: string, force = false) =>
     fetchApi<{ success: boolean; message?: string; summary?: string; status?: string; cached?: boolean }>(
       `/recordings/${recordingId}/detailed-summary`,
-      { method: 'POST' }
+      {
+        method: 'POST',
+        body: JSON.stringify({ force }),
+      }
     ),
 
   /**

@@ -707,6 +707,55 @@ export default function SetupPage() {
           </div>
         </div>
 
+        {/* API利用上限に関する注意事項 */}
+        <div className="mb-8 p-4 bg-amber-50 border border-amber-200 rounded-lg">
+          <h2 className="text-sm font-medium text-amber-800 mb-3 flex items-center">
+            <AlertCircle className="h-4 w-4 mr-2" />
+            API利用上限に関する注意事項
+          </h2>
+          <p className="text-sm text-amber-700 mb-3">
+            以下のサービスには利用上限があります。上限を超えると機能が停止します。
+          </p>
+          <div className="space-y-2 text-sm">
+            <div className="flex items-start gap-2">
+              <span className="font-medium text-amber-800 min-w-[140px]">OpenAI API:</span>
+              <span className="text-amber-700">
+                クレジット残高に依存。
+                <a href="https://platform.openai.com/usage" target="_blank" rel="noopener noreferrer" className="underline hover:text-amber-900 ml-1">
+                  利用状況を確認 <ExternalLink className="h-3 w-3 inline" />
+                </a>
+              </span>
+            </div>
+            <div className="flex items-start gap-2">
+              <span className="font-medium text-amber-800 min-w-[140px]">YouTube Data API:</span>
+              <span className="text-amber-700">
+                1日10,000 quota units（動画アップロード=1,600 units/本）
+                <a href="https://console.cloud.google.com/apis/api/youtube.googleapis.com/quotas" target="_blank" rel="noopener noreferrer" className="underline hover:text-amber-900 ml-1">
+                  確認 <ExternalLink className="h-3 w-3 inline" />
+                </a>
+              </span>
+            </div>
+            <div className="flex items-start gap-2">
+              <span className="font-medium text-amber-800 min-w-[140px]">Google Sheets API:</span>
+              <span className="text-amber-700">
+                1分あたり300リクエスト
+                <a href="https://console.cloud.google.com/apis/api/sheets.googleapis.com/quotas" target="_blank" rel="noopener noreferrer" className="underline hover:text-amber-900 ml-1">
+                  確認 <ExternalLink className="h-3 w-3 inline" />
+                </a>
+              </span>
+            </div>
+            <div className="flex items-start gap-2">
+              <span className="font-medium text-amber-800 min-w-[140px]">Zoom API:</span>
+              <span className="text-amber-700">
+                プランにより異なる（無料プラン: 100リクエスト/日）
+                <a href="https://marketplace.zoom.us/" target="_blank" rel="noopener noreferrer" className="underline hover:text-amber-900 ml-1">
+                  確認 <ExternalLink className="h-3 w-3 inline" />
+                </a>
+              </span>
+            </div>
+          </div>
+        </div>
+
         {/* サービス別設定 */}
         <div className="space-y-4">
           {services.map(service => {
