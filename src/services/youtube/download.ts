@@ -25,7 +25,8 @@ export async function downloadFromYouTube(
   youtubeUrl: string,
   outputFileName: string
 ): Promise<YouTubeDownloadResult> {
-  const tempDir = config.app.tempDir;
+  // 絶対パスに変換
+  const tempDir = path.resolve(process.cwd(), config.app.tempDir);
 
   // ファイル名をサニタイズ
   const safeFileName = outputFileName
