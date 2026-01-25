@@ -29,12 +29,13 @@ model Organization {
   updatedAt   DateTime @updatedAt
 
   // リレーション
-  members         OrganizationMember[]
-  recordings      Recording[]
-  clients         Client[]
-  reportTemplates ReportTemplate[]
-  settings        Settings?
-  invitations     Invitation[]
+  members            OrganizationMember[]
+  recordings         Recording[]
+  clients            Client[]
+  reportTemplates    ReportTemplate[]
+  settings           Settings?
+  invitations        Invitation[]
+  circlebackMeetings CirclebackMeeting[]
 }
 
 // -------------------------------------------
@@ -313,6 +314,75 @@ model Settings {
   notionApiKey         String?
   notionDatabaseId     String?
 
+  // Circleback API設定
+  circlebackEnabled          Boolean @default(false)
+  circlebackWebhookSecret    String?  // Webhook署名検証用シークレット
+
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
+}
+
+// -------------------------------------------
+// Circlebackミーティング
+// -------------------------------------------
+model CirclebackMeeting {
+  id                String   @id @default(cuid())
+
+  // 組織（テナント）
+  organizationId    String
+  organization      Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  // Circlebackからの情報
+  circlebackId      String   // Circlebackのミーティング ID
+  name              String   // ミーティング名
+  notes             String?  // Markdown形式のミーティングノート
+  transcript        String?  // 文字起こし（オプション）
+  recordingUrl      String?  // 録画URL（24時間有効）
+  duration          Int?     // 秒単位
+  icalUid           String?  // カレンダーイベント UID
+  tags              String?  // タグ（JSON配列として保存）
+
+  // 参加者情報（JSON配列として保存）
+  attendees         String?  // [{ name, email }, ...]
+
+  // Zoom録画との紐付け（オプション）
+  recordingId       String?  // 関連するZoom Recording
+
+  // メタ情報
+  circlebackCreatedAt DateTime  // Circlebackでの作成日時
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  // リレーション
+  actionItems       CirclebackActionItem[]
+
+  // インデックス
+  @@unique([organizationId, circlebackId])
+  @@index([organizationId])
+  @@index([circlebackCreatedAt])
+}
+
+// -------------------------------------------
+// Circlebackアクションアイテム
+// -------------------------------------------
+model CirclebackActionItem {
+  id                String   @id @default(cuid())
+
+  // ミーティング
+  meetingId         String
+  meeting           CirclebackMeeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+
+  // Circlebackからの情報
+  circlebackId      String   // CirclebackのアクションアイテムID
+  title             String   // アクションアイテムのタイトル
+  description       String?  // 詳細説明
+  status            String   @default("PENDING")  // PENDING, COMPLETED
+  assigneeName      String?  // 担当者名
+  assigneeEmail     String?  // 担当者メール
+
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([meetingId])
+  @@index([status])
 }

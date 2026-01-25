@@ -49,6 +49,7 @@ export async function GET() {
       googleClientId: maskSecret(settings.googleClientId),
       googleClientSecret: maskSecret(settings.googleClientSecret),
       notionApiKey: maskSecret(settings.notionApiKey),
+      circlebackWebhookSecret: maskSecret(settings.circlebackWebhookSecret),
     };
 
     return NextResponse.json(maskedSettings);
@@ -91,6 +92,7 @@ export async function PUT(request: NextRequest) {
       summaryStyle,
       sheetsEnabled,
       notionEnabled,
+      circlebackEnabled,
     } = body;
 
     const settings = await prisma.settings.upsert({
@@ -104,6 +106,7 @@ export async function PUT(request: NextRequest) {
         summaryStyle,
         sheetsEnabled,
         notionEnabled,
+        circlebackEnabled,
       },
       create: {
         organizationId,
@@ -115,6 +118,7 @@ export async function PUT(request: NextRequest) {
         summaryStyle,
         sheetsEnabled,
         notionEnabled,
+        circlebackEnabled,
       },
     });
 

@@ -7,6 +7,12 @@ import { extractClientName } from '../../utils/clientParser.js';
 import { addProcessingJob } from '../../queue/worker.js';
 import { prisma } from '../../utils/db.js';
 import type { ZoomWebhookPayload, ZoomRecordingFile } from '../../types/index.js';
+import {
+  verifyCirclebackWebhook,
+  parseWebhookPayload,
+  saveCirclebackMeeting,
+  type CirclebackWebhookPayload,
+} from '../../services/circleback/index.js';
 
 /**
  * Zoom URLからミーティングIDを抽出
@@ -245,4 +251,88 @@ webhookRouter.post('/test', async (req: Request, res: Response) => {
   }
 
   res.json({ success: true, message: 'Test webhook processed' });
+});
+
+/**
+ * Circleback Webhook エンドポイント
+ * 組織IDはURLパスで指定: /webhook/circleback/:organizationId
+ */
+webhookRouter.post('/circleback/:organizationId', async (req: Request, res: Response) => {
+  const { organizationId } = req.params;
+
+  try {
+    logger.info('Circleback Webhook受信', { organizationId });
+
+    // 組織の設定を取得
+    const settings = await prisma.settings.findUnique({
+      where: { organizationId },
+      select: {
+        circlebackEnabled: true,
+        circlebackWebhookSecret: true,
+      },
+    });
+
+    if (!settings) {
+      logger.warn('Circleback: 組織設定が見つかりません', { organizationId });
+      res.status(404).json({ error: 'Organization not found' });
+      return;
+    }
+
+    if (!settings.circlebackEnabled) {
+      logger.warn('Circleback: 連携が無効です', { organizationId });
+      res.status(403).json({ error: 'Circleback integration is disabled' });
+      return;
+    }
+
+    // 署名検証
+    const signature = req.headers['x-signature'] as string;
+    if (!signature || !settings.circlebackWebhookSecret) {
+      logger.warn('Circleback: 署名情報が不足', { organizationId, hasSignature: !!signature });
+      res.status(401).json({ error: 'Missing signature or webhook secret' });
+      return;
+    }
+
+    const rawBody = (req as Request & { rawBody?: Buffer }).rawBody;
+    if (!rawBody) {
+      logger.error('Circleback: rawBodyが見つかりません');
+      res.status(400).json({ error: 'Invalid request body' });
+      return;
+    }
+
+    const isValidSignature = verifyCirclebackWebhook(
+      rawBody.toString(),
+      signature,
+      settings.circlebackWebhookSecret
+    );
+
+    if (!isValidSignature) {
+      webhookLogger.rejected('Circleback署名検証失敗');
+      res.status(401).json({ error: 'Invalid signature' });
+      return;
+    }
+
+    // ペイロードを解析して保存
+    const payload = req.body as CirclebackWebhookPayload;
+    const meetingData = parseWebhookPayload(payload);
+
+    const result = await saveCirclebackMeeting(organizationId, meetingData);
+
+    if (result.success) {
+      logger.info('Circlebackミーティング処理完了', {
+        organizationId,
+        meetingId: result.meetingId,
+        name: payload.name,
+      });
+      res.status(200).json({ received: true, meetingId: result.meetingId });
+    } else {
+      logger.error('Circlebackミーティング保存失敗', {
+        organizationId,
+        error: result.error,
+      });
+      res.status(500).json({ error: result.error });
+    }
+  } catch (error) {
+    logger.error('Circleback Webhook処理エラー', { organizationId, error });
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });

@@ -40,6 +40,11 @@ export async function GET() {
         message: '未設定',
         configured: false,
       },
+      circleback: {
+        connected: false,
+        message: '未設定',
+        configured: false,
+      },
     };
 
     if (settings) {
@@ -77,6 +82,17 @@ export async function GET() {
         status.notion.configured = true;
         status.notion.connected = false;
         status.notion.message = 'Database IDが必要です';
+      }
+
+      // Circleback
+      if (settings.circlebackWebhookSecret && settings.circlebackEnabled) {
+        status.circleback.configured = true;
+        status.circleback.connected = true;
+        status.circleback.message = '接続済み';
+      } else if (settings.circlebackWebhookSecret) {
+        status.circleback.configured = true;
+        status.circleback.connected = false;
+        status.circleback.message = '連携が無効です';
       }
     }
 

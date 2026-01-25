@@ -23,6 +23,7 @@ import {
   EyeOff,
   Settings as SettingsIcon,
   FileText,
+  MessageSquare,
 } from 'lucide-react';
 import { DashboardLayout } from '@/components/DashboardLayout';
 import { api, Settings, ConnectionStatus, Credentials } from '@/lib/api';
@@ -70,6 +71,7 @@ export default function SetupPage() {
     summaryStyle: 'detailed',
     sheetsEnabled: true,
     notionEnabled: false,
+    circlebackEnabled: false,
     zoomAccountId: null,
     zoomClientId: null,
     zoomClientSecret: null,
@@ -80,6 +82,7 @@ export default function SetupPage() {
     googleSpreadsheetId: null,
     notionApiKey: null,
     notionDatabaseId: null,
+    circlebackWebhookSecret: null,
     createdAt: '',
     updatedAt: '',
   });
@@ -96,6 +99,7 @@ export default function SetupPage() {
     googleSpreadsheetId: '',
     notionApiKey: '',
     notionDatabaseId: '',
+    circlebackWebhookSecret: '',
   });
 
   // 設定と接続状態を取得
@@ -145,6 +149,7 @@ export default function SetupPage() {
         summaryStyle: newSettings.summaryStyle ?? settings.summaryStyle,
         sheetsEnabled: newSettings.sheetsEnabled ?? settings.sheetsEnabled,
         notionEnabled: newSettings.notionEnabled ?? settings.notionEnabled,
+        circlebackEnabled: newSettings.circlebackEnabled ?? settings.circlebackEnabled,
       });
     } catch (err) {
       console.error('Failed to save settings:', err);
@@ -185,6 +190,10 @@ export default function SetupPage() {
         return {
           notionApiKey: credentials.notionApiKey,
           notionDatabaseId: credentials.notionDatabaseId,
+        };
+      case 'circleback':
+        return {
+          circlebackWebhookSecret: credentials.circlebackWebhookSecret,
         };
       default:
         return {};
@@ -230,6 +239,9 @@ export default function SetupPage() {
               notionApiKey: result.notionApiKey ?? prev.notionApiKey,
               notionDatabaseId: result.notionDatabaseId ?? prev.notionDatabaseId,
             }),
+            ...(serviceId === 'circleback' && {
+              circlebackWebhookSecret: result.circlebackWebhookSecret ?? prev.circlebackWebhookSecret,
+            }),
           }));
 
           // 入力フォームをクリア
@@ -253,6 +265,9 @@ export default function SetupPage() {
               notionApiKey: '',
               notionDatabaseId: '',
             }),
+            ...(serviceId === 'circleback' && {
+              circlebackWebhookSecret: '',
+            }),
           }));
         }
       }
@@ -274,6 +289,11 @@ export default function SetupPage() {
   const webhookUrl = typeof window !== 'undefined'
     ? `${window.location.origin.replace(':3001', ':3002')}/webhook/zoom`
     : 'https://your-domain.com:3002/webhook/zoom';
+
+  // Circleback Webhook URL（organizationIdが必要なため、settingsから取得）
+  const circlebackWebhookUrl = typeof window !== 'undefined'
+    ? `${window.location.origin.replace(':3001', ':3002')}/webhook/circleback/${settings.organizationId || '{ORGANIZATION_ID}'}`
+    : 'https://your-domain.com:3002/webhook/circleback/{ORGANIZATION_ID}';
 
   const services: ServiceSetup[] = [
     {
@@ -417,6 +437,36 @@ export default function SetupPage() {
         },
       ],
     },
+    {
+      id: 'circleback',
+      name: 'Circleback',
+      icon: <MessageSquare className="h-5 w-5" />,
+      color: 'text-indigo-500',
+      description: 'AIミーティングノートの自動同期（オプション）',
+      steps: [
+        {
+          id: 'circleback-1',
+          title: 'Circlebackでオートメーションを設定',
+          description: 'Webhook連携を有効化',
+          instructions: [
+            'Circleback →「Automations」→ 新しいオートメーションを作成',
+            '「Webhook」を選択',
+            '下記のWebhook URLを設定',
+          ],
+          links: [{ label: 'Circleback', url: 'https://app.circleback.ai' }],
+        },
+        {
+          id: 'circleback-2',
+          title: 'Signing Secretをコピー',
+          description: '署名検証用のシークレットを取得',
+          instructions: [
+            'オートメーション設定画面で「Signing Secret」を確認',
+            'シークレットをコピーしてフォームに入力',
+            '「保存」をクリック',
+          ],
+        },
+      ],
+    },
   ];
 
   const getServiceStatus = (serviceId: string): 'connected' | 'configured' | 'not_configured' => {
@@ -430,6 +480,8 @@ export default function SetupPage() {
         return connectionStatus.youtube.connected ? 'connected' : connectionStatus.youtube.configured ? 'configured' : 'not_configured';
       case 'notion':
         return connectionStatus.notion?.connected ? 'connected' : connectionStatus.notion?.configured ? 'configured' : 'not_configured';
+      case 'circleback':
+        return connectionStatus.circleback?.connected ? 'connected' : connectionStatus.circleback?.configured ? 'configured' : 'not_configured';
       default:
         return 'not_configured';
     }
@@ -658,6 +710,47 @@ export default function SetupPage() {
                   placeholder={settings.notionDatabaseId || 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx'}
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary-500"
                 />
+              </div>
+            </div>
+          </div>
+        );
+      case 'circleback':
+        return (
+          <div className="p-4 bg-white border-t border-gray-200">
+            <h4 className="font-medium text-gray-900 mb-3 flex items-center">
+              <Key className="h-4 w-4 mr-2 text-orange-500" />
+              認証情報
+            </h4>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Webhook URL
+                </label>
+                <div className="p-2 bg-gray-100 rounded flex items-center justify-between gap-2">
+                  <code className="text-xs text-gray-800 break-all">{circlebackWebhookUrl}</code>
+                  <button onClick={() => copyToClipboard(circlebackWebhookUrl)} className="flex-shrink-0 p-1 text-gray-500 hover:text-gray-700">
+                    {copiedText === circlebackWebhookUrl ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
+                  </button>
+                </div>
+                <p className="mt-1 text-xs text-gray-500">このURLをCirclebackのWebhook設定に貼り付けてください</p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Signing Secret
+                  {settings.circlebackWebhookSecret && <span className="ml-2 text-xs text-green-600">設定済み</span>}
+                </label>
+                <div className="relative">
+                  <input
+                    type={showSecrets['circlebackWebhookSecret'] ? 'text' : 'password'}
+                    value={credentials.circlebackWebhookSecret || ''}
+                    onChange={(e) => setCredentials({ ...credentials, circlebackWebhookSecret: e.target.value })}
+                    placeholder="CirclebackのSigning Secretを入力"
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 pr-10 focus:ring-2 focus:ring-primary-500"
+                  />
+                  <button type="button" onClick={() => toggleShowSecret('circlebackWebhookSecret')} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                    {showSecrets['circlebackWebhookSecret'] ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -994,6 +1087,33 @@ export default function SetupPage() {
                     className="sr-only peer"
                   />
                   <div className={`w-11 h-6 bg-gray-200 peer-focus:ring-4 peer-focus:ring-primary-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-600 ${!isServiceConnected('notion') ? 'peer-checked:bg-gray-400' : ''}`}></div>
+                </label>
+              </div>
+            </div>
+
+            {/* Circleback */}
+            <div className={`card p-4 ${!isServiceConnected('circleback') ? 'opacity-60' : ''}`}>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <MessageSquare className="h-5 w-5 text-indigo-500" />
+                  <div>
+                    <p className="font-medium text-gray-900">Circleback連携</p>
+                    <p className="text-xs text-gray-500">
+                      {isServiceConnected('circleback')
+                        ? 'AIミーティングノートを自動同期'
+                        : 'Circleback Webhook設定が必要です'}
+                    </p>
+                  </div>
+                </div>
+                <label className={`relative inline-flex items-center ${isServiceConnected('circleback') ? 'cursor-pointer' : 'cursor-not-allowed'}`}>
+                  <input
+                    type="checkbox"
+                    checked={settings.circlebackEnabled && isServiceConnected('circleback')}
+                    onChange={(e) => handleSettingsChange('circlebackEnabled', e.target.checked)}
+                    disabled={!isServiceConnected('circleback')}
+                    className="sr-only peer"
+                  />
+                  <div className={`w-11 h-6 bg-gray-200 peer-focus:ring-4 peer-focus:ring-primary-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-600 ${!isServiceConnected('circleback') ? 'peer-checked:bg-gray-400' : ''}`}></div>
                 </label>
               </div>
             </div>

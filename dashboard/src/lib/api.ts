@@ -188,6 +188,7 @@ export interface Settings {
   summaryStyle: 'brief' | 'detailed';
   sheetsEnabled: boolean;
   notionEnabled: boolean;
+  circlebackEnabled: boolean;
   zoomAccountId: string | null;
   zoomClientId: string | null;
   zoomClientSecret: string | null;
@@ -198,6 +199,7 @@ export interface Settings {
   googleSpreadsheetId: string | null;
   notionApiKey: string | null;
   notionDatabaseId: string | null;
+  circlebackWebhookSecret: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -213,6 +215,7 @@ export interface Credentials {
   googleSpreadsheetId?: string;
   notionApiKey?: string;
   notionDatabaseId?: string;
+  circlebackWebhookSecret?: string;
 }
 
 export interface CredentialsResponse {
@@ -228,6 +231,7 @@ export interface CredentialsResponse {
   googleSpreadsheetId: string | null;
   notionApiKey: string | null;
   notionDatabaseId: string | null;
+  circlebackWebhookSecret: string | null;
 }
 
 export interface TestResult {
@@ -242,6 +246,47 @@ export interface ConnectionStatus {
   youtube: { connected: boolean; message: string; configured: boolean };
   openai: { connected: boolean; message: string; configured: boolean };
   notion: { connected: boolean; message: string; configured: boolean };
+  circleback: { connected: boolean; message: string; configured: boolean };
+}
+
+// Circleback types
+export interface CirclebackAttendee {
+  name: string;
+  email: string;
+}
+
+export interface CirclebackActionItem {
+  id: string;
+  circlebackId: string;
+  title: string;
+  description: string | null;
+  status: string;
+  assigneeName: string | null;
+  assigneeEmail: string | null;
+}
+
+export interface CirclebackMeeting {
+  id: string;
+  circlebackId: string;
+  name: string;
+  notes: string | null;
+  transcript?: string | null;
+  recordingUrl?: string | null;
+  duration: number | null;
+  icalUid?: string | null;
+  attendees: CirclebackAttendee[];
+  tags?: string[];
+  actionItemCount?: number;
+  actionItems?: CirclebackActionItem[];
+  circlebackCreatedAt: string;
+  createdAt: string;
+}
+
+export interface CirclebackMeetingsResponse {
+  meetings: CirclebackMeeting[];
+  total: number;
+  limit: number;
+  offset: number;
 }
 
 export interface Organization {
@@ -575,6 +620,54 @@ export const api = {
   clearReportSent: (recordingId: string) =>
     fetchApi<{ success: boolean; message: string }>(
       `/recordings/${recordingId}/report-sent`,
+      { method: 'DELETE' }
+    ),
+
+  // =============================================
+  // Circleback API
+  // =============================================
+
+  /**
+   * Circlebackミーティング一覧を取得
+   */
+  getCirclebackMeetings: (params?: {
+    limit?: number;
+    offset?: number;
+    search?: string;
+  }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.limit) searchParams.set('limit', params.limit.toString());
+    if (params?.offset) searchParams.set('offset', params.offset.toString());
+    if (params?.search) searchParams.set('search', params.search);
+
+    const query = searchParams.toString();
+    return fetchApi<CirclebackMeetingsResponse>(`/circleback${query ? `?${query}` : ''}`);
+  },
+
+  /**
+   * Circlebackミーティング詳細を取得
+   */
+  getCirclebackMeeting: (id: string) =>
+    fetchApi<CirclebackMeeting>(`/circleback/${id}`),
+
+  /**
+   * Circlebackアクションアイテムのステータスを更新
+   */
+  updateCirclebackActionItem: (meetingId: string, actionItemId: string, status: 'PENDING' | 'COMPLETED') =>
+    fetchApi<{ success: boolean; actionItem: CirclebackActionItem }>(
+      `/circleback/${meetingId}`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify({ actionItemId, status }),
+      }
+    ),
+
+  /**
+   * Circlebackミーティングを削除
+   */
+  deleteCirclebackMeeting: (id: string) =>
+    fetchApi<{ success: boolean; message: string }>(
+      `/circleback/${id}`,
       { method: 'DELETE' }
     ),
 };

@@ -47,6 +47,7 @@ export async function PUT(request: NextRequest) {
       googleSpreadsheetId,
       notionApiKey,
       notionDatabaseId,
+      circlebackWebhookSecret,
     } = body;
 
     // 空文字列の場合はnullに変換（既存の値を消去しない）
@@ -82,6 +83,9 @@ export async function PUT(request: NextRequest) {
     if (notionDatabaseId !== undefined && notionDatabaseId !== '') {
       updateData.notionDatabaseId = notionDatabaseId;
     }
+    if (circlebackWebhookSecret !== undefined && circlebackWebhookSecret !== '') {
+      updateData.circlebackWebhookSecret = circlebackWebhookSecret;
+    }
 
     const settings = await prisma.settings.upsert({
       where: { organizationId },
@@ -106,6 +110,7 @@ export async function PUT(request: NextRequest) {
       googleSpreadsheetId: settings.googleSpreadsheetId,
       notionApiKey: maskSecret(settings.notionApiKey),
       notionDatabaseId: settings.notionDatabaseId,
+      circlebackWebhookSecret: maskSecret(settings.circlebackWebhookSecret),
     });
   } catch (error) {
     console.error('Credentials PUT error:', error);

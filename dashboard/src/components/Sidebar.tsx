@@ -9,11 +9,13 @@ import {
   Settings,
   RefreshCw,
   FileText,
+  MessageSquare,
 } from 'lucide-react';
 
 const navigation = [
   { name: 'ダッシュボード', href: '/', icon: Home },
   { name: '録画一覧', href: '/recordings', icon: Video },
+  { name: 'Circleback', href: '/circleback', icon: MessageSquare },
   { name: 'クライアント', href: '/clients', icon: Users },
   { name: 'テンプレート', href: '/templates', icon: FileText },
   { name: 'セットアップ', href: '/setup', icon: Settings },
