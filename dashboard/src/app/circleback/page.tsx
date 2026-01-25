@@ -135,7 +135,7 @@ export default function CirclebackPage() {
             {meetings.map((meeting) => (
               <a
                 key={meeting.id}
-                href={`/zoom/circleback/${meeting.id}`}
+                href={`/circleback/${meeting.id}`}
                 className="block card p-4 hover:border-primary-300 transition-colors"
               >
                 <div className="flex items-start justify-between">

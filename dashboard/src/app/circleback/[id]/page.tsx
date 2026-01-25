@@ -78,7 +78,7 @@ export default function CirclebackDetailPage({
     setDeleting(true);
     try {
       await api.deleteCirclebackMeeting(meeting.id);
-      router.push('/zoom/circleback');
+      router.push('/circleback');
     } catch (err) {
       console.error('Failed to delete meeting:', err);
       setError('ミーティングの削除に失敗しました');
@@ -127,7 +127,7 @@ export default function CirclebackDetailPage({
             {error || 'ミーティングが見つかりません'}
           </div>
           <a
-            href="/zoom/circleback"
+            href="/circleback"
             className="inline-flex items-center gap-2 mt-4 text-primary-600 hover:underline"
           >
             <ArrowLeft className="h-4 w-4" />
@@ -146,7 +146,7 @@ export default function CirclebackDetailPage({
       <div className="p-6 max-w-4xl">
         {/* 戻るリンク */}
         <a
-          href="/zoom/circleback"
+          href="/circleback"
           className="inline-flex items-center gap-2 text-gray-600 hover:text-gray-900 mb-4"
         >
           <ArrowLeft className="h-4 w-4" />
