@@ -458,10 +458,16 @@ export async function transcribeWithWhisper(
     };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
+    const errorDetails = error instanceof Error ? {
+      name: error.name,
+      stack: error.stack?.split('\n').slice(0, 3).join('\n'),
+      cause: (error as Error & { cause?: unknown }).cause,
+    } : {};
 
     logger.error('Whisper文字起こし失敗', {
       filePath,
       error: errorMessage,
+      details: errorDetails,
     });
 
     return {
