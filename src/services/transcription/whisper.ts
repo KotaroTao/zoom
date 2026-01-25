@@ -57,6 +57,45 @@ function extractContextFromText(text: string, maxLength: number = 200): string {
 }
 
 /**
+ * リトライ付きでAPI呼び出しを実行
+ */
+async function withRetry<T>(
+  fn: () => Promise<T>,
+  maxRetries: number = 3,
+  baseDelay: number = 2000
+): Promise<T> {
+  let lastError: Error | undefined;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+
+      // 最後の試行の場合はエラーを投げる
+      if (attempt === maxRetries) {
+        throw lastError;
+      }
+
+      // Connection errorの場合のみリトライ
+      const errorMessage = lastError.message.toLowerCase();
+      if (errorMessage.includes('connection') || errorMessage.includes('timeout') || errorMessage.includes('econnreset')) {
+        const delay = baseDelay * Math.pow(2, attempt);
+        logger.warn(`API接続エラー、${delay}ms後にリトライ (${attempt + 1}/${maxRetries})`, {
+          error: lastError.message,
+        });
+        await new Promise(resolve => setTimeout(resolve, delay));
+      } else {
+        // その他のエラーはリトライしない
+        throw lastError;
+      }
+    }
+  }
+
+  throw lastError;
+}
+
+/**
  * 単一ファイルの文字起こし（内部用）
  */
 async function transcribeSingleFile(
@@ -76,13 +115,16 @@ async function transcribeSingleFile(
     ? `${basePrompt} 前の内容: ${contextPrompt}`
     : basePrompt;
 
-  const response = await openai.audio.transcriptions.create({
-    file: fs.createReadStream(filePath),
-    model: 'whisper-1',
-    language: options.language || 'ja',
-    response_format: options.responseFormat || 'verbose_json',
-    temperature: options.temperature ?? 0,
-    prompt: fullPrompt,
+  // リトライ付きでAPI呼び出し
+  const response = await withRetry(async () => {
+    return await openai.audio.transcriptions.create({
+      file: fs.createReadStream(filePath),
+      model: 'whisper-1',
+      language: options.language || 'ja',
+      response_format: options.responseFormat || 'verbose_json',
+      temperature: options.temperature ?? 0,
+      prompt: fullPrompt,
+    });
   });
 
   // レスポンス形式に応じて処理
