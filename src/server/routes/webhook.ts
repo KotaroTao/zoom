@@ -7,6 +7,7 @@ import { extractClientName } from '../../utils/clientParser.js';
 import { addProcessingJob } from '../../queue/worker.js';
 import { prisma } from '../../utils/db.js';
 import type { ZoomWebhookPayload, ZoomRecordingFile } from '../../types/index.js';
+import circlebackRouter from './circleback.js';
 
 /**
  * Zoom URLからミーティングIDを抽出
@@ -246,3 +247,9 @@ webhookRouter.post('/test', async (req: Request, res: Response) => {
 
   res.json({ success: true, message: 'Test webhook processed' });
 });
+
+/**
+ * Circleback Webhook ルート
+ * POST /webhook/circleback
+ */
+webhookRouter.use('/circleback', circlebackRouter);

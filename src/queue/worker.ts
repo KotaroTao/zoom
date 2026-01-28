@@ -4,9 +4,10 @@
  * Zoom録画を順次処理:
  * 1. ダウンロード
  * 2. YouTubeアップロード
- * 3. 文字起こし
- * 4. 要約生成
- * 5. Sheets/Notion同期
+ * 3. Circleback待機（文字起こし・要約はCirclebackから取得）
+ *
+ * Circleback Webhook受信後:
+ * 4. Sheets/Notion同期（circleback/sync.tsで実行）
  */
 
 import * as fs from 'fs';
@@ -21,11 +22,6 @@ import type { ProcessingJob } from '../types/index.js';
 import { downloadRecordingFile } from '../services/zoom/download.js';
 import { zoomClient } from '../services/zoom/client.js';
 import { uploadToYouTube } from '../services/youtube/upload.js';
-import { transcribeWithWhisper } from '../services/transcription/whisper.js';
-import { generateSummary } from '../services/summary/openai.js';
-import { appendRow } from '../services/sheets/client.js';
-import { createMeetingPageWithCredentials } from '../services/notion/client.js';
-import { getCredentials } from '../utils/credentials.js';
 
 // Redis接続設定（ioredisインスタンスではなく設定オブジェクトを使用）
 const connection = {
@@ -80,6 +76,14 @@ export async function addProcessingJob(
 
 /**
  * 録画処理ワーカー
+ *
+ * 処理フロー:
+ * 1. Zoom録画ダウンロード
+ * 2. YouTubeアップロード
+ * 3. WAITING_CIRCLEBACKステータスに遷移
+ *
+ * ※ 文字起こし・要約はCirclebackが行う
+ * ※ Sheets/Notion同期はCircleback Webhook受信後に実行
  */
 async function processRecording(job: Job<ProcessingJob>): Promise<void> {
   const {
@@ -101,8 +105,6 @@ async function processRecording(job: Job<ProcessingJob>): Promise<void> {
   let downloadedFilePath: string | null = null;
   let youtubeUrl: string | null = null;
   let youtubeVideoId: string | null = null;
-  let transcript: string | null = null;
-  let summary: string | null = null;
   let dbRecordingId: string | null = null;
 
   try {
@@ -142,6 +144,7 @@ async function processRecording(job: Job<ProcessingJob>): Promise<void> {
     });
     dbRecordingId = dbRecording.id;
     logger.info('DB録画レコード作成/更新', { dbRecordingId });
+
     // ==============================
     // Step 1: Zoom録画ダウンロード
     // ==============================
@@ -234,12 +237,19 @@ async function processRecording(job: Job<ProcessingJob>): Promise<void> {
 
     stepLogger.complete('UPLOAD', recordingId);
 
-    // DBステータス更新（YouTubeアップロード結果を保存）
+    // ==============================
+    // Step 3: Circleback待機
+    // ==============================
+    // 文字起こし・要約はCirclebackが行う
+    // Sheets/Notion同期はCircleback Webhook受信後に実行
+    await job.updateProgress(70);
+
+    // DBステータスをWAITING_CIRCLEBACKに更新
     if (dbRecordingId) {
       await prisma.recording.update({
         where: { id: dbRecordingId },
         data: {
-          status: 'TRANSCRIBING',
+          status: 'WAITING_CIRCLEBACK',
           uploadedAt: new Date(),
           youtubeUrl,
           youtubeVideoId,
@@ -248,160 +258,12 @@ async function processRecording(job: Job<ProcessingJob>): Promise<void> {
       });
     }
 
-    // ==============================
-    // Step 3: 文字起こし
-    // ==============================
-    stepLogger.start('TRANSCRIBE', recordingId);
-    await job.updateProgress(50);
-
-    if (downloadedFilePath && fs.existsSync(downloadedFilePath)) {
-      const transcriptionResult = await transcribeWithWhisper(downloadedFilePath, {
-        language: 'ja',
-      });
-
-      if (transcriptionResult.success && transcriptionResult.text) {
-        transcript = transcriptionResult.text;
-        logger.info('文字起こし完了', {
-          textLength: transcript.length,
-          duration: transcriptionResult.duration,
-        });
-      } else {
-        logger.error('文字起こし失敗', { error: transcriptionResult.error });
-      }
-    } else {
-      logger.warn('動画ファイルがないため文字起こしをスキップ');
-    }
-
-    stepLogger.complete('TRANSCRIBE', recordingId);
-
-    // DBステータス更新
-    if (dbRecordingId) {
-      await prisma.recording.update({
-        where: { id: dbRecordingId },
-        data: {
-          status: 'SUMMARIZING',
-          transcribedAt: new Date(),
-          transcript,
-        },
-      });
-    }
+    logger.info('Circleback待機ステータスに遷移', { dbRecordingId });
 
     // ==============================
-    // Step 4: 要約生成
+    // Step 4: クリーンアップ
     // ==============================
-    stepLogger.start('SUMMARIZE', recordingId);
-    await job.updateProgress(70);
-
-    if (transcript) {
-      const summaryResult = await generateSummary(transcript, {
-        clientName: clientName || undefined,
-        meetingTitle: title,
-        style: 'detailed',
-      });
-
-      if (summaryResult.success && summaryResult.summary) {
-        summary = summaryResult.summary;
-        logger.info('要約生成完了', { summaryLength: summary.length });
-      } else {
-        logger.error('要約生成失敗', { error: summaryResult.error });
-      }
-    } else {
-      logger.warn('文字起こしがないため要約生成をスキップ');
-    }
-
-    stepLogger.complete('SUMMARIZE', recordingId);
-
-    // DBステータス更新
-    if (dbRecordingId) {
-      await prisma.recording.update({
-        where: { id: dbRecordingId },
-        data: {
-          status: 'SYNCING',
-          summarizedAt: new Date(),
-          summary,
-        },
-      });
-    }
-
-    // ==============================
-    // Step 5: Google Sheets / Notion 同期
-    // ==============================
-    stepLogger.start('SYNC', recordingId);
     await job.updateProgress(90);
-
-    // DBから認証情報を取得
-    const credentials = await getCredentials();
-
-    // 同期結果を追跡
-    let sheetsSuccess: boolean | null = null;
-    let sheetsError: string | null = null;
-    let sheetRowNumber: number | null = null;
-    let notionSuccess: boolean | null = null;
-    let notionError: string | null = null;
-    let notionPageId: string | null = null;
-
-    // Google Sheets に追加
-    if (credentials.googleSpreadsheetId) {
-      const sheetResult = await appendRow(credentials.googleSpreadsheetId, {
-        title,
-        clientName,
-        meetingDate: meetingDate ? new Date(meetingDate) : new Date(),
-        youtubeUrl,
-        summary,
-        zoomUrl,
-        duration,
-        hostEmail,
-        processedAt: new Date(),
-      });
-
-      sheetsSuccess = sheetResult.success;
-      if (sheetResult.success) {
-        sheetRowNumber = sheetResult.rowNumber || null;
-        logger.info('Google Sheets追加完了', { rowNumber: sheetResult.rowNumber });
-      } else {
-        sheetsError = sheetResult.error || 'Unknown error';
-        logger.error('Google Sheets追加失敗', { error: sheetResult.error });
-      }
-    } else {
-      logger.debug('Google Sheets連携はスキップ（スプレッドシートID未設定）');
-    }
-
-    // Notion に追加
-    if (credentials.notionApiKey && credentials.notionDatabaseId) {
-      const notionResult = await createMeetingPageWithCredentials(
-        {
-          title,
-          clientName,
-          meetingDate: meetingDate ? new Date(meetingDate) : new Date(),
-          youtubeUrl,
-          summary,
-          zoomUrl,
-          duration,
-          hostEmail,
-          status: 'completed',
-        },
-        credentials.notionApiKey,
-        credentials.notionDatabaseId
-      );
-
-      notionSuccess = notionResult.success;
-      if (notionResult.success) {
-        notionPageId = notionResult.pageId || null;
-        logger.info('Notionページ作成完了', { pageUrl: notionResult.pageUrl });
-      } else {
-        notionError = notionResult.error || 'Unknown error';
-        logger.error('Notionページ作成失敗', { error: notionResult.error });
-      }
-    } else {
-      logger.debug('Notion連携はスキップ（認証情報未設定）');
-    }
-
-    stepLogger.complete('SYNC', recordingId);
-
-    // ==============================
-    // Step 6: クリーンアップ
-    // ==============================
-    await job.updateProgress(95);
 
     // ダウンロードした一時ファイルを削除
     if (downloadedFilePath) {
@@ -412,30 +274,13 @@ async function processRecording(job: Job<ProcessingJob>): Promise<void> {
     // 完了
     await job.updateProgress(100);
 
-    // DBステータスを完了に更新（同期結果を含む）
-    if (dbRecordingId) {
-      await prisma.recording.update({
-        where: { id: dbRecordingId },
-        data: {
-          status: 'COMPLETED',
-          syncedAt: new Date(),
-          sheetRowNumber,
-          sheetsSuccess,
-          sheetsError,
-          notionPageId,
-          notionSuccess,
-          notionError,
-        },
-      });
-    }
-
     logger.info('='.repeat(40));
-    logger.info('録画処理完了', {
+    logger.info('YouTube処理完了、Circleback待機中', {
       recordingId,
       title,
       clientName,
       youtubeUrl,
-      hasSummary: !!summary,
+      status: 'WAITING_CIRCLEBACK',
     });
     logger.info('='.repeat(40));
   } catch (error) {

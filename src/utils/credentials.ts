@@ -22,6 +22,9 @@ export interface DBCredentials {
   // Notion
   notionApiKey: string | null;
   notionDatabaseId: string | null;
+  // Circleback
+  circlebackEnabled: boolean;
+  circlebackWebhookSecret: string | null;
 }
 
 /**
@@ -48,6 +51,9 @@ export async function getCredentials(): Promise<DBCredentials> {
       // Notion
       notionApiKey: settings?.notionApiKey || config.notion.apiKey || null,
       notionDatabaseId: settings?.notionDatabaseId || config.notion.databaseId || null,
+      // Circleback
+      circlebackEnabled: settings?.circlebackEnabled ?? false,
+      circlebackWebhookSecret: settings?.circlebackWebhookSecret || null,
     };
   } catch (error) {
     logger.warn('DB認証情報の取得に失敗、環境変数を使用', { error });
@@ -64,6 +70,8 @@ export async function getCredentials(): Promise<DBCredentials> {
       googleSpreadsheetId: config.google.spreadsheetId || null,
       notionApiKey: config.notion.apiKey || null,
       notionDatabaseId: config.notion.databaseId || null,
+      circlebackEnabled: false,
+      circlebackWebhookSecret: null,
     };
   }
 }

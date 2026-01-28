@@ -1,6 +1,6 @@
 // ===========================================
 // Zoom YouTube Automation - Prisma Schema
-// マルチテナント対応版
+// マルチテナント対応版 + Circleback連携
 // ===========================================
 
 generator client {
@@ -8,7 +8,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
@@ -134,10 +134,15 @@ model Recording {
   youtubeUrl      String?
 
   // 処理結果
-  transcript      String?  // 文字起こし全文
-  summary         String?  // 要約テキスト
-  detailedSummary String?  // 詳細要約（長文版）
-  detailedSummaryStatus String?  // 詳細要約ステータス: GENERATING, COMPLETED, FAILED
+  transcript      String?  // 文字起こし全文（Circlebackから取得）
+  summary         String?  // 要約テキスト（Circlebackノートで上書き）
+
+  // Circleback連携
+  circlebackMeetingId     String?   // CirclebackのミーティングID
+  circlebackNotes         String?   // Circlebackの議事録（Markdown）
+  circlebackActionItems   Json?     // アクションアイテム（JSON配列）
+  circlebackRecordingUrl  String?   // Circleback録画URL（24時間有効）
+  circlebackSyncedAt      DateTime? // Circleback受信日時
 
   // クライアント向け報告書
   clientReport           String?    // 生成された報告書
@@ -157,7 +162,8 @@ model Recording {
   notionError     String?   // Notion エラーメッセージ
 
   // ステータス管理
-  status          String   @default("PENDING")  // PENDING, DOWNLOADING, UPLOADING, TRANSCRIBING, SUMMARIZING, SYNCING, COMPLETED, FAILED
+  // PENDING, DOWNLOADING, UPLOADING, WAITING_CIRCLEBACK, SYNCING, COMPLETED, FAILED
+  status          String   @default("PENDING")
   errorMessage    String?
 
   // 処理時刻
@@ -177,6 +183,7 @@ model Recording {
   @@index([clientName])
   @@index([status])
   @@index([meetingDate])
+  @@index([hostEmail, meetingDate])  // Circleback紐付け用
 }
 
 // -------------------------------------------
@@ -280,19 +287,15 @@ model Settings {
   youtubeEnabled       Boolean @default(true)
   youtubePrivacy       String  @default("unlisted") // private, unlisted, public
 
-  // 文字起こし設定
-  transcriptionEnabled Boolean @default(true)
-  transcriptionLanguage String @default("ja")
-
-  // 要約設定
-  summaryEnabled       Boolean @default(true)
-  summaryStyle         String  @default("detailed") // brief, detailed
-
   // Google Sheets設定
   sheetsEnabled        Boolean @default(true)
 
   // Notion設定
   notionEnabled        Boolean @default(false)
+
+  // Circleback連携設定
+  circlebackEnabled        Boolean  @default(false)
+  circlebackWebhookSecret  String?  // Webhook署名検証用シークレット
 
   // Zoom API認証情報
   zoomAccountId        String?

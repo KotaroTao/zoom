@@ -936,6 +936,121 @@ cd dashboard && npm run build && cd ..
 pm2 restart zoom-backend zoom-dashboard
 ```
 
+---
+
+## Circleback連携（v2.0）
+
+### 概要
+
+文字起こしと要約生成をCirclebackに移行。Whisper APIとGPT要約を廃止し、Circlebackの高精度な議事録を活用。
+
+### 変更点
+
+| 機能 | 旧実装 | 新実装 |
+|------|--------|--------|
+| 文字起こし | Whisper API | Circleback |
+| 通常要約 | GPT-4o-mini | Circleback |
+| 詳細要約 | GPT-4o-mini | **削除** |
+| 再処理機能 | YouTube経由 | **削除** |
+
+### 処理フロー
+
+```
+Zoom録画完了
+    ↓
+[Worker] ダウンロード → YouTube UP → WAITING_CIRCLEBACK
+    ↓
+[Circleback] 文字起こし・議事録生成
+    ↓
+[Webhook] /webhook/circleback で受信
+    ↓
+[Worker] Sheets/Notion同期 → COMPLETED
+```
+
+### 設定手順
+
+1. **Circlebackダッシュボード**で Automations を作成
+2. トリガー: `When a meeting ends`
+3. ステップ: `Webhook` を追加
+4. Webhook URL: `https://tao-dx.com/zoom/webhook/circleback`
+5. Signing Secret をコピーしてダッシュボードの設定画面に入力
+6. 含めるデータ: notes, actionItems, recordingUrl, email
+
+### 新しいステータス
+
+| ステータス | 説明 |
+|------------|------|
+| `WAITING_CIRCLEBACK` | YouTube UP完了、Circlebackからの議事録待ち |
+
+---
+
+## PostgreSQL移行（v2.0）
+
+### 概要
+
+SQLiteからPostgreSQLに移行。JSONフィールドのネイティブサポートと大規模データ対応。
+
+### 移行手順
+
+```bash
+# 1. PostgreSQLインストール（VPS）
+sudo apt install postgresql postgresql-contrib
+
+# 2. データベース作成
+sudo -u postgres psql
+CREATE DATABASE zoom_automation;
+CREATE USER zoom_app WITH ENCRYPTED PASSWORD 'your_password';
+GRANT ALL PRIVILEGES ON DATABASE zoom_automation TO zoom_app;
+\c zoom_automation
+GRANT ALL ON SCHEMA public TO zoom_app;
+
+# 3. 環境変数更新
+DATABASE_URL="postgresql://zoom_app:your_password@localhost:5432/zoom_automation?schema=public"
+
+# 4. スキーマ適用
+npx prisma db push
+
+# 5. データ移行
+SQLITE_URL=file:./dashboard/prisma/data.db npx tsx scripts/migrate-to-postgres.ts
+
+# 6. Prismaクライアント再生成
+npx prisma generate
+cd dashboard && npx prisma generate
+```
+
+### 環境変数
+
+```bash
+# PostgreSQL接続
+DATABASE_URL="postgresql://user:password@localhost:5432/dbname?schema=public"
+```
+
+---
+
+## 開発ブランチ（2026年1月版）
+
+メイン開発ブランチ: `claude/plan-circleback-integration-3513w`
+
+### 最新の変更（2026年1月28日）
+
+#### Circleback連携
+- Webhook受信エンドポイント (`/webhook/circleback`)
+- 署名検証ミドルウェア
+- Recording紐付けロジック（hostEmail + meetingDate）
+- 同期処理（Sheets/Notion）の分離
+
+#### PostgreSQL対応
+- Prismaスキーマ変更（provider: postgresql）
+- データ移行スクリプト
+- Circlebackフィールド追加（JSON型）
+
+#### 削除した機能
+- Whisper文字起こし（`src/services/transcription/`）
+- 詳細要約生成（`generateComprehensiveSummary`）
+- 再処理機能（YouTube経由の再処理）
+
+---
+
 ## ライセンス
 
 MIT

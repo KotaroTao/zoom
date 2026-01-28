@@ -324,7 +324,7 @@ export default function SetupPage() {
       name: 'OpenAI API',
       icon: <Zap className="h-5 w-5" />,
       color: 'text-green-500',
-      description: '文字起こし（Whisper）と要約生成（GPT）に必要',
+      description: '報告書生成（GPT-4）に必要',
       testFn: api.testOpenAI,
       steps: [
         {
@@ -344,6 +344,45 @@ export default function SetupPage() {
           instructions: [
             '上のフォームにAPIキーを入力',
             '「保存して接続テスト」をクリック',
+          ],
+        },
+      ],
+    },
+    {
+      id: 'circleback',
+      name: 'Circleback',
+      icon: <FileText className="h-5 w-5" />,
+      color: 'text-purple-500',
+      description: 'AI議事録・文字起こし（Circlebackで処理）',
+      steps: [
+        {
+          id: 'circleback-1',
+          title: 'CirclebackでAutomationを作成',
+          description: 'Webhook連携を設定',
+          instructions: [
+            'Circlebackダッシュボード →「Automations」→「New Automation」',
+            'トリガーで「When a meeting ends」を選択',
+            '「Add Step」→「Webhook」を選択',
+          ],
+          links: [{ label: 'Circleback Automations', url: 'https://app.circleback.ai/automations' }],
+        },
+        {
+          id: 'circleback-2',
+          title: 'Webhook URLとSecretを設定',
+          description: 'このシステムのWebhook URLを入力',
+          instructions: [
+            'Webhook URL: 下記URLをコピーして貼り付け',
+            'Signing Secret: Circlebackが表示するSecretをコピー',
+            '含めるデータ: notes, actionItems, recordingUrl, email を選択',
+          ],
+        },
+        {
+          id: 'circleback-3',
+          title: 'Secretを入力して有効化',
+          description: 'Circlebackの署名検証用シークレットを設定',
+          instructions: [
+            'CirclebackのSigning Secretを下のフォームに入力',
+            'Circleback連携を有効にする',
           ],
         },
       ],
@@ -430,6 +469,9 @@ export default function SetupPage() {
         return connectionStatus.youtube.connected ? 'connected' : connectionStatus.youtube.configured ? 'configured' : 'not_configured';
       case 'notion':
         return connectionStatus.notion?.connected ? 'connected' : connectionStatus.notion?.configured ? 'configured' : 'not_configured';
+      case 'circleback':
+        // Circleback: settingsのcirclebackEnabledを確認
+        return (settings as Settings & { circlebackEnabled?: boolean }).circlebackEnabled ? 'connected' : 'not_configured';
       default:
         return 'not_configured';
     }
@@ -662,6 +704,73 @@ export default function SetupPage() {
             </div>
           </div>
         );
+      case 'circleback':
+        const circlebackWebhookUrl = typeof window !== 'undefined'
+          ? `${window.location.origin.replace(':3001', ':3002').replace('/zoom', '')}/webhook/circleback`
+          : 'https://tao-dx.com/zoom/webhook/circleback';
+        return (
+          <div className="p-4 bg-white border-t border-gray-200">
+            <h4 className="font-medium text-gray-900 mb-3 flex items-center">
+              <Key className="h-4 w-4 mr-2 text-orange-500" />
+              Circleback連携設定
+            </h4>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Webhook URL（Circlebackに設定）
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    readOnly
+                    value={circlebackWebhookUrl}
+                    className="flex-1 border border-gray-300 rounded-lg px-3 py-2 bg-gray-50 text-gray-700"
+                  />
+                  <button
+                    onClick={() => copyToClipboard(circlebackWebhookUrl)}
+                    className="p-2 text-gray-500 hover:text-gray-700 border border-gray-300 rounded-lg"
+                  >
+                    {copiedText === circlebackWebhookUrl ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
+                  </button>
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Signing Secret（Circlebackからコピー）
+                  {(settings as Settings & { circlebackWebhookSecret?: string }).circlebackWebhookSecret && <span className="ml-2 text-xs text-green-600">設定済み</span>}
+                </label>
+                <div className="relative">
+                  <input
+                    type={showSecrets['circlebackWebhookSecret'] ? 'text' : 'password'}
+                    value={(credentials as Credentials & { circlebackWebhookSecret?: string }).circlebackWebhookSecret || ''}
+                    onChange={(e) => setCredentials({ ...credentials, circlebackWebhookSecret: e.target.value } as Credentials)}
+                    placeholder="whsec_..."
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 pr-10 focus:ring-2 focus:ring-primary-500"
+                  />
+                  <button type="button" onClick={() => toggleShowSecret('circlebackWebhookSecret')} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                    {showSecrets['circlebackWebhookSecret'] ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={(settings as Settings & { circlebackEnabled?: boolean }).circlebackEnabled || false}
+                    onChange={(e) => handleSettingsChange('circlebackEnabled' as keyof Settings, e.target.checked)}
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-gray-200 peer-focus:ring-4 peer-focus:ring-primary-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-600"></div>
+                </label>
+                <span className="text-sm font-medium text-gray-900">Circleback連携を有効にする</span>
+              </div>
+              <p className="text-xs text-gray-500">
+                有効にすると、文字起こしと要約はCirclebackが行います。
+                Zoom録画はYouTubeにアップロード後、Circlebackからの議事録を待機します。
+              </p>
+            </div>
+          </div>
+        );
       default:
         return null;
     }
@@ -865,83 +974,24 @@ export default function SetupPage() {
               )}
             </div>
 
-            {/* 文字起こし */}
-            <div className={`card p-4 ${!isServiceConnected('openai') ? 'opacity-60' : ''}`}>
+            {/* Circleback（文字起こし・議事録） */}
+            <div className={`card p-4 ${!isServiceConnected('circleback') ? 'opacity-60' : ''}`}>
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <FileText className="h-5 w-5 text-blue-500" />
+                  <FileText className="h-5 w-5 text-purple-500" />
                   <div>
-                    <p className="font-medium text-gray-900">文字起こし（Whisper）</p>
+                    <p className="font-medium text-gray-900">Circleback連携</p>
                     <p className="text-xs text-gray-500">
-                      {isServiceConnected('openai')
-                        ? 'OpenAI Whisperで自動的に文字起こし'
-                        : 'OpenAI APIの接続が必要です'}
+                      {isServiceConnected('circleback')
+                        ? 'Circlebackで文字起こし・議事録を自動取得'
+                        : 'Circlebackの設定が必要です'}
                     </p>
                   </div>
                 </div>
-                <label className={`relative inline-flex items-center ${isServiceConnected('openai') ? 'cursor-pointer' : 'cursor-not-allowed'}`}>
-                  <input
-                    type="checkbox"
-                    checked={settings.transcriptionEnabled && isServiceConnected('openai')}
-                    onChange={(e) => handleSettingsChange('transcriptionEnabled', e.target.checked)}
-                    disabled={!isServiceConnected('openai')}
-                    className="sr-only peer"
-                  />
-                  <div className={`w-11 h-6 bg-gray-200 peer-focus:ring-4 peer-focus:ring-primary-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-600 ${!isServiceConnected('openai') ? 'peer-checked:bg-gray-400' : ''}`}></div>
-                </label>
+                <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${isServiceConnected('circleback') ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+                  {isServiceConnected('circleback') ? '有効' : '無効'}
+                </span>
               </div>
-              {settings.transcriptionEnabled && isServiceConnected('openai') && (
-                <div className="mt-3 pl-8">
-                  <select
-                    value={settings.transcriptionLanguage}
-                    onChange={(e) => handleSettingsChange('transcriptionLanguage', e.target.value)}
-                    className="text-sm border border-gray-300 rounded-lg px-3 py-1.5"
-                  >
-                    <option value="ja">日本語</option>
-                    <option value="en">英語</option>
-                    <option value="auto">自動検出</option>
-                  </select>
-                </div>
-              )}
-            </div>
-
-            {/* 要約 */}
-            <div className={`card p-4 ${!isServiceConnected('openai') ? 'opacity-60' : ''}`}>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <SettingsIcon className="h-5 w-5 text-purple-500" />
-                  <div>
-                    <p className="font-medium text-gray-900">要約生成（GPT-4）</p>
-                    <p className="text-xs text-gray-500">
-                      {isServiceConnected('openai')
-                        ? 'GPT-4でミーティング内容を自動要約'
-                        : 'OpenAI APIの接続が必要です'}
-                    </p>
-                  </div>
-                </div>
-                <label className={`relative inline-flex items-center ${isServiceConnected('openai') ? 'cursor-pointer' : 'cursor-not-allowed'}`}>
-                  <input
-                    type="checkbox"
-                    checked={settings.summaryEnabled && isServiceConnected('openai')}
-                    onChange={(e) => handleSettingsChange('summaryEnabled', e.target.checked)}
-                    disabled={!isServiceConnected('openai')}
-                    className="sr-only peer"
-                  />
-                  <div className={`w-11 h-6 bg-gray-200 peer-focus:ring-4 peer-focus:ring-primary-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-600 ${!isServiceConnected('openai') ? 'peer-checked:bg-gray-400' : ''}`}></div>
-                </label>
-              </div>
-              {settings.summaryEnabled && isServiceConnected('openai') && (
-                <div className="mt-3 pl-8">
-                  <select
-                    value={settings.summaryStyle}
-                    onChange={(e) => handleSettingsChange('summaryStyle', e.target.value)}
-                    className="text-sm border border-gray-300 rounded-lg px-3 py-1.5"
-                  >
-                    <option value="brief">簡潔</option>
-                    <option value="detailed">詳細</option>
-                  </select>
-                </div>
-              )}
             </div>
 
             {/* Google Sheets */}
