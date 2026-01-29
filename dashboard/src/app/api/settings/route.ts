@@ -49,6 +49,7 @@ export async function GET() {
       googleClientId: maskSecret(settings.googleClientId),
       googleClientSecret: maskSecret(settings.googleClientSecret),
       notionApiKey: maskSecret(settings.notionApiKey),
+      circlebackWebhookSecret: maskSecret(settings.circlebackWebhookSecret),
     };
 
     return NextResponse.json(maskedSettings);
@@ -85,12 +86,9 @@ export async function PUT(request: NextRequest) {
     const {
       youtubeEnabled,
       youtubePrivacy,
-      transcriptionEnabled,
-      transcriptionLanguage,
-      summaryEnabled,
-      summaryStyle,
       sheetsEnabled,
       notionEnabled,
+      circlebackEnabled,
     } = body;
 
     const settings = await prisma.settings.upsert({
@@ -98,23 +96,17 @@ export async function PUT(request: NextRequest) {
       update: {
         youtubeEnabled,
         youtubePrivacy,
-        transcriptionEnabled,
-        transcriptionLanguage,
-        summaryEnabled,
-        summaryStyle,
         sheetsEnabled,
         notionEnabled,
+        circlebackEnabled,
       },
       create: {
         organizationId,
         youtubeEnabled,
         youtubePrivacy,
-        transcriptionEnabled,
-        transcriptionLanguage,
-        summaryEnabled,
-        summaryStyle,
         sheetsEnabled,
         notionEnabled,
+        circlebackEnabled,
       },
     });
 

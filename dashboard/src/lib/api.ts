@@ -182,12 +182,10 @@ export interface Settings {
   organizationId: string;
   youtubeEnabled: boolean;
   youtubePrivacy: 'private' | 'unlisted' | 'public';
-  transcriptionEnabled: boolean;
-  transcriptionLanguage: string;
-  summaryEnabled: boolean;
-  summaryStyle: 'brief' | 'detailed';
   sheetsEnabled: boolean;
   notionEnabled: boolean;
+  circlebackEnabled: boolean;
+  circlebackWebhookSecret: string | null;
   zoomAccountId: string | null;
   zoomClientId: string | null;
   zoomClientSecret: string | null;
@@ -213,6 +211,7 @@ export interface Credentials {
   googleSpreadsheetId?: string;
   notionApiKey?: string;
   notionDatabaseId?: string;
+  circlebackWebhookSecret?: string;
 }
 
 export interface CredentialsResponse {
@@ -228,6 +227,7 @@ export interface CredentialsResponse {
   googleSpreadsheetId: string | null;
   notionApiKey: string | null;
   notionDatabaseId: string | null;
+  circlebackWebhookSecret: string | null;
 }
 
 export interface TestResult {

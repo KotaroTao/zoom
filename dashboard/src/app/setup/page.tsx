@@ -64,12 +64,10 @@ export default function SetupPage() {
     organizationId: '',
     youtubeEnabled: true,
     youtubePrivacy: 'unlisted',
-    transcriptionEnabled: true,
-    transcriptionLanguage: 'ja',
-    summaryEnabled: true,
-    summaryStyle: 'detailed',
     sheetsEnabled: true,
     notionEnabled: false,
+    circlebackEnabled: false,
+    circlebackWebhookSecret: null,
     zoomAccountId: null,
     zoomClientId: null,
     zoomClientSecret: null,
@@ -96,6 +94,7 @@ export default function SetupPage() {
     googleSpreadsheetId: '',
     notionApiKey: '',
     notionDatabaseId: '',
+    circlebackWebhookSecret: '',
   });
 
   // 設定と接続状態を取得
@@ -139,12 +138,9 @@ export default function SetupPage() {
       await api.updateSettings({
         youtubeEnabled: newSettings.youtubeEnabled ?? settings.youtubeEnabled,
         youtubePrivacy: newSettings.youtubePrivacy ?? settings.youtubePrivacy,
-        transcriptionEnabled: newSettings.transcriptionEnabled ?? settings.transcriptionEnabled,
-        transcriptionLanguage: newSettings.transcriptionLanguage ?? settings.transcriptionLanguage,
-        summaryEnabled: newSettings.summaryEnabled ?? settings.summaryEnabled,
-        summaryStyle: newSettings.summaryStyle ?? settings.summaryStyle,
         sheetsEnabled: newSettings.sheetsEnabled ?? settings.sheetsEnabled,
         notionEnabled: newSettings.notionEnabled ?? settings.notionEnabled,
+        circlebackEnabled: newSettings.circlebackEnabled ?? settings.circlebackEnabled,
       });
     } catch (err) {
       console.error('Failed to save settings:', err);
@@ -185,6 +181,10 @@ export default function SetupPage() {
         return {
           notionApiKey: credentials.notionApiKey,
           notionDatabaseId: credentials.notionDatabaseId,
+        };
+      case 'circleback':
+        return {
+          circlebackWebhookSecret: credentials.circlebackWebhookSecret,
         };
       default:
         return {};
@@ -230,6 +230,9 @@ export default function SetupPage() {
               notionApiKey: result.notionApiKey ?? prev.notionApiKey,
               notionDatabaseId: result.notionDatabaseId ?? prev.notionDatabaseId,
             }),
+            ...(serviceId === 'circleback' && {
+              circlebackWebhookSecret: result.circlebackWebhookSecret ?? prev.circlebackWebhookSecret,
+            }),
           }));
 
           // 入力フォームをクリア
@@ -252,6 +255,9 @@ export default function SetupPage() {
             ...(serviceId === 'notion' && {
               notionApiKey: '',
               notionDatabaseId: '',
+            }),
+            ...(serviceId === 'circleback' && {
+              circlebackWebhookSecret: '',
             }),
           }));
         }
@@ -471,7 +477,7 @@ export default function SetupPage() {
         return connectionStatus.notion?.connected ? 'connected' : connectionStatus.notion?.configured ? 'configured' : 'not_configured';
       case 'circleback':
         // Circleback: settingsのcirclebackEnabledを確認
-        return (settings as Settings & { circlebackEnabled?: boolean }).circlebackEnabled ? 'connected' : 'not_configured';
+        return settings.circlebackEnabled ? 'connected' : 'not_configured';
       default:
         return 'not_configured';
     }
@@ -737,13 +743,13 @@ export default function SetupPage() {
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Signing Secret（Circlebackからコピー）
-                  {(settings as Settings & { circlebackWebhookSecret?: string }).circlebackWebhookSecret && <span className="ml-2 text-xs text-green-600">設定済み</span>}
+                  {settings.circlebackWebhookSecret && <span className="ml-2 text-xs text-green-600">設定済み</span>}
                 </label>
                 <div className="relative">
                   <input
                     type={showSecrets['circlebackWebhookSecret'] ? 'text' : 'password'}
-                    value={(credentials as Credentials & { circlebackWebhookSecret?: string }).circlebackWebhookSecret || ''}
-                    onChange={(e) => setCredentials({ ...credentials, circlebackWebhookSecret: e.target.value } as Credentials)}
+                    value={credentials.circlebackWebhookSecret || ''}
+                    onChange={(e) => setCredentials({ ...credentials, circlebackWebhookSecret: e.target.value })}
                     placeholder="whsec_..."
                     className="w-full border border-gray-300 rounded-lg px-3 py-2 pr-10 focus:ring-2 focus:ring-primary-500"
                   />
@@ -756,8 +762,8 @@ export default function SetupPage() {
                 <label className="relative inline-flex items-center cursor-pointer">
                   <input
                     type="checkbox"
-                    checked={(settings as Settings & { circlebackEnabled?: boolean }).circlebackEnabled || false}
-                    onChange={(e) => handleSettingsChange('circlebackEnabled' as keyof Settings, e.target.checked)}
+                    checked={settings.circlebackEnabled || false}
+                    onChange={(e) => handleSettingsChange('circlebackEnabled', e.target.checked)}
                     className="sr-only peer"
                   />
                   <div className="w-11 h-6 bg-gray-200 peer-focus:ring-4 peer-focus:ring-primary-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-600"></div>
@@ -768,6 +774,45 @@ export default function SetupPage() {
                 有効にすると、文字起こしと要約はCirclebackが行います。
                 Zoom録画はYouTubeにアップロード後、Circlebackからの議事録を待機します。
               </p>
+              {/* Circleback用の保存ボタン */}
+              <button
+                onClick={async () => {
+                  if (credentials.circlebackWebhookSecret) {
+                    setTestingService('circleback');
+                    try {
+                      const result = await api.updateCredentials({ circlebackWebhookSecret: credentials.circlebackWebhookSecret });
+                      if (result.success) {
+                        setSettings(prev => ({ ...prev, circlebackWebhookSecret: result.circlebackWebhookSecret }));
+                        setCredentials(prev => ({ ...prev, circlebackWebhookSecret: '' }));
+                        setTestResults(prev => ({ ...prev, circleback: { success: true, message: 'Signing Secretを保存しました' } }));
+                      }
+                    } catch (err) {
+                      setTestResults(prev => ({ ...prev, circleback: { success: false, message: '保存に失敗しました' } }));
+                    } finally {
+                      setTestingService(null);
+                    }
+                  }
+                }}
+                disabled={!credentials.circlebackWebhookSecret || testingService === 'circleback'}
+                className="mt-3 px-4 py-2 text-sm bg-purple-600 hover:bg-purple-700 text-white rounded-lg flex items-center transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {testingService === 'circleback' ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    保存中...
+                  </>
+                ) : (
+                  <>
+                    <Key className="h-4 w-4 mr-2" />
+                    Signing Secretを保存
+                  </>
+                )}
+              </button>
+              {testResults['circleback'] && (
+                <p className={`mt-2 text-sm ${testResults['circleback'].success ? 'text-green-600' : 'text-red-600'}`}>
+                  {testResults['circleback'].success ? '✓' : '✗'} {testResults['circleback'].message}
+                </p>
+              )}
             </div>
           </div>
         );
