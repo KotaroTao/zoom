@@ -990,7 +990,49 @@ Zoom録画完了
 
 SQLiteからPostgreSQLに移行。JSONフィールドのネイティブサポートと大規模データ対応。
 
-### 移行手順
+### 本番環境の構成（2026年1月30日時点）
+
+| 項目 | 値 |
+|------|-----|
+| データベース | PostgreSQL |
+| ホスト | localhost:5432 |
+| DB名 | zoom_db |
+| ユーザー | zoom_user |
+| パスワード | MUNP1687 |
+
+### 重要: PM2起動時の環境変数
+
+**⚠️ PM2はダッシュボードの`.env`ファイルを自動で読み込まない場合があります。**
+
+以下のコマンドで環境変数を明示的に指定して起動してください：
+
+```bash
+cd /var/www/zoom/dashboard
+
+# PM2を環境変数付きで起動
+DATABASE_URL="postgresql://zoom_user:MUNP1687@localhost:5432/zoom_db" pm2 start npm --name "zoom-dashboard" -- start
+pm2 save
+
+# 再起動時
+DATABASE_URL="postgresql://zoom_user:MUNP1687@localhost:5432/zoom_db" pm2 restart zoom-dashboard --update-env
+```
+
+### ダッシュボード用.envファイル
+
+`/var/www/zoom/dashboard/.env`:
+```bash
+DATABASE_URL="postgresql://zoom_user:MUNP1687@localhost:5432/zoom_db"
+```
+
+### バックエンド用.envファイル
+
+`/var/www/zoom/.env`:
+```bash
+DATABASE_URL="postgresql://zoom_user:MUNP1687@localhost:5432/zoom_db"
+# その他の環境変数...
+```
+
+### 移行手順（参考）
 
 ```bash
 # 1. PostgreSQLインストール（VPS）
@@ -998,14 +1040,14 @@ sudo apt install postgresql postgresql-contrib
 
 # 2. データベース作成
 sudo -u postgres psql
-CREATE DATABASE zoom_automation;
-CREATE USER zoom_app WITH ENCRYPTED PASSWORD 'your_password';
-GRANT ALL PRIVILEGES ON DATABASE zoom_automation TO zoom_app;
-\c zoom_automation
-GRANT ALL ON SCHEMA public TO zoom_app;
+CREATE DATABASE zoom_db;
+CREATE USER zoom_user WITH ENCRYPTED PASSWORD 'MUNP1687';
+GRANT ALL PRIVILEGES ON DATABASE zoom_db TO zoom_user;
+\c zoom_db
+GRANT ALL ON SCHEMA public TO zoom_user;
 
 # 3. 環境変数更新
-DATABASE_URL="postgresql://zoom_app:your_password@localhost:5432/zoom_automation?schema=public"
+DATABASE_URL="postgresql://zoom_user:MUNP1687@localhost:5432/zoom_db"
 
 # 4. スキーマ適用
 npx prisma db push
@@ -1018,11 +1060,34 @@ npx prisma generate
 cd dashboard && npx prisma generate
 ```
 
-### 環境変数
+### トラブルシューティング: DATABASE_URLエラー
+
+**症状**: ログに `URL must start with protocol postgresql://` または Prisma validation error
+
+**原因**: PM2が環境変数を読み込んでいない
+
+**解決手順**:
 
 ```bash
-# PostgreSQL接続
-DATABASE_URL="postgresql://user:password@localhost:5432/dbname?schema=public"
+cd /var/www/zoom/dashboard
+
+# 1. PM2プロセスを削除
+pm2 delete zoom-dashboard
+
+# 2. .nextキャッシュを削除
+rm -rf .next
+
+# 3. Prismaクライアント再生成
+npx prisma generate
+
+# 4. ビルド
+npm run build
+
+# 5. 環境変数付きでPM2起動
+DATABASE_URL="postgresql://zoom_user:MUNP1687@localhost:5432/zoom_db" pm2 start npm --name "zoom-dashboard" -- start
+
+# 6. 保存
+pm2 save
 ```
 
 ---
@@ -1031,23 +1096,151 @@ DATABASE_URL="postgresql://user:password@localhost:5432/dbname?schema=public"
 
 メイン開発ブランチ: `claude/plan-circleback-integration-3513w`
 
-### 最新の変更（2026年1月28日）
+### 最新の変更（2026年1月30日）
 
 #### Circleback連携
 - Webhook受信エンドポイント (`/webhook/circleback`)
 - 署名検証ミドルウェア
 - Recording紐付けロジック（hostEmail + meetingDate）
 - 同期処理（Sheets/Notion）の分離
+- ダッシュボードでCircleback設定（有効化・Signing Secret）の保存機能
 
 #### PostgreSQL対応
 - Prismaスキーマ変更（provider: postgresql）
 - データ移行スクリプト
 - Circlebackフィールド追加（JSON型）
+- **PM2環境変数設定の注意事項を追加**
 
 #### 削除した機能
 - Whisper文字起こし（`src/services/transcription/`）
 - 詳細要約生成（`generateComprehensiveSummary`）
 - 再処理機能（YouTube経由の再処理）
+
+### Circleback設定の保存（修正済み: 2026/01/30）
+
+以下のファイルが修正され、Circleback設定をダッシュボードから保存可能：
+
+| ファイル | 修正内容 |
+|---------|---------|
+| `dashboard/src/app/api/settings/route.ts` | `circlebackEnabled` フィールドを追加 |
+| `dashboard/src/app/api/settings/credentials/route.ts` | `circlebackWebhookSecret` フィールドを追加 |
+| `dashboard/src/lib/api.ts` | Settings/Credentials インターフェース更新 |
+| `dashboard/src/app/setup/page.tsx` | saveSettings関数と保存ボタン追加 |
+
+---
+
+## 開発継続ガイド（他セッション用）
+
+### 現在の状態（2026年1月30日）
+
+| 項目 | 状態 |
+|------|------|
+| Circleback連携 | ✅ 実装完了 |
+| PostgreSQL移行 | ✅ 完了 |
+| ダッシュボード設定画面 | ✅ Circleback設定保存可能 |
+| バックエンド | ✅ 動作確認済み |
+| Webhookエンドポイント | ✅ 設定済み |
+
+### デプロイ時の注意点
+
+#### 1. PM2とDATABASE_URL
+
+PM2は`.env`ファイルを自動で読み込まない場合があります。必ず以下のコマンドで起動：
+
+```bash
+# ダッシュボード
+cd /var/www/zoom/dashboard
+DATABASE_URL="postgresql://zoom_user:MUNP1687@localhost:5432/zoom_db" pm2 start npm --name "zoom-dashboard" -- start
+
+# バックエンド
+cd /var/www/zoom
+pm2 start dist/index.js --name "zoom-backend"
+```
+
+#### 2. ビルド前にキャッシュ削除
+
+Prismaスキーマ変更後は必ず：
+
+```bash
+cd /var/www/zoom/dashboard
+rm -rf .next
+npx prisma generate
+npm run build
+```
+
+#### 3. ログ確認
+
+```bash
+# エラーログをクリアして確認
+pm2 flush zoom-dashboard
+# ブラウザでアクセス後
+pm2 logs zoom-dashboard --lines 30 --nostream
+```
+
+### 主要な設定ファイルの場所
+
+| ファイル | 説明 |
+|---------|------|
+| `/var/www/zoom/.env` | バックエンド環境変数 |
+| `/var/www/zoom/dashboard/.env` | ダッシュボード環境変数 |
+| `/var/www/zoom/prisma/schema.prisma` | Prismaスキーマ（共通） |
+| `/etc/nginx/sites-available/tao-dx` | Nginx設定 |
+
+### PM2プロセス名
+
+| 名前 | 説明 | ポート |
+|------|------|--------|
+| `zoom-backend` | Express APIサーバー | 3002 |
+| `zoom-dashboard` | Next.jsダッシュボード | 3001 |
+
+### 完全デプロイ手順
+
+```bash
+# 1. VPSにSSH
+ssh root@tao-dx.com
+
+# 2. ブランチを取得
+cd /var/www/zoom
+git fetch origin
+git checkout claude/plan-circleback-integration-3513w
+git pull origin claude/plan-circleback-integration-3513w
+
+# 3. バックエンドビルド
+npm install
+npx prisma generate
+npm run build
+pm2 restart zoom-backend
+
+# 4. ダッシュボードビルド
+cd dashboard
+npm install
+rm -rf .next
+npx prisma generate
+npm run build
+
+# 5. PM2再起動（環境変数付き）
+pm2 delete zoom-dashboard
+DATABASE_URL="postgresql://zoom_user:MUNP1687@localhost:5432/zoom_db" pm2 start npm --name "zoom-dashboard" -- start
+pm2 save
+
+# 6. 動作確認
+pm2 logs --lines 30
+```
+
+### 関連URL
+
+| 項目 | URL |
+|------|-----|
+| ダッシュボード | https://tao-dx.com/zoom |
+| セットアップ画面 | https://tao-dx.com/zoom/setup |
+| Zoom Webhook | https://tao-dx.com/zoom/webhook/zoom |
+| Circleback Webhook | https://tao-dx.com/zoom/webhook/circleback |
+
+### 今後の開発タスク
+
+- [ ] Circleback Webhookの動作テスト（実際のミーティング録画で確認）
+- [ ] Circlebackからの議事録データの保存・表示
+- [ ] エラーハンドリングの強化
 
 ---
 
