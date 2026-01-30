@@ -30,6 +30,8 @@ import {
   RefreshCw,
   Trash2,
   Send,
+  CircleDot,
+  ListChecks,
 } from 'lucide-react';
 import { StatusBadge } from '@/components/StatusBadge';
 import { DashboardLayout } from '@/components/DashboardLayout';
@@ -181,7 +183,7 @@ export default function RecordingsPage() {
   const [loadingDetailed, setLoadingDetailed] = useState(false);
 
   // モーダルタブ状態
-  const [modalTab, setModalTab] = useState<'summary' | 'transcript' | 'detailed'>('summary');
+  const [modalTab, setModalTab] = useState<'summary' | 'transcript' | 'detailed' | 'circleback'>('summary');
 
   const fetchRecordings = async () => {
     setLoading(true);
@@ -510,6 +512,7 @@ export default function RecordingsPage() {
               >
                 <option value="all">すべて</option>
                 <option value="COMPLETED">完了</option>
+                <option value="WAITING_CIRCLEBACK">Circleback待ち</option>
                 <option value="TRANSCRIBING">文字起こし中</option>
                 <option value="UPLOADING">アップロード中</option>
                 <option value="DOWNLOADING">ダウンロード中</option>
@@ -586,6 +589,12 @@ export default function RecordingsPage() {
                         icon={Youtube}
                         label="YouTube"
                         color="text-red-500"
+                      />
+                      <SyncStatusIcon
+                        success={recording.circlebackSyncedAt ? true : null}
+                        icon={CircleDot}
+                        label="Circleback"
+                        color="text-purple-500"
                       />
                       <SyncStatusIcon
                         success={recording.sheetsSuccess}
@@ -745,6 +754,12 @@ export default function RecordingsPage() {
                             icon={Youtube}
                             label="YouTube"
                             color="text-red-500"
+                          />
+                          <SyncStatusIcon
+                            success={recording.circlebackSyncedAt ? true : null}
+                            icon={CircleDot}
+                            label="Circleback"
+                            color="text-purple-500"
                           />
                           <SyncStatusIcon
                             success={recording.sheetsSuccess}
@@ -974,6 +989,20 @@ export default function RecordingsPage() {
                   <Loader2 className="h-3 w-3 animate-spin" />
                 )}
               </button>
+              <button
+                onClick={() => setModalTab('circleback')}
+                className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors flex items-center gap-1 ${
+                  modalTab === 'circleback'
+                    ? 'border-purple-500 text-purple-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                <CircleDot className="h-3 w-3" />
+                Circleback
+                {selectedRecording?.circlebackSyncedAt && (
+                  <CheckCircle className="h-3 w-3 text-green-500" />
+                )}
+              </button>
             </div>
 
             {/* コンテンツ */}
@@ -1088,6 +1117,95 @@ export default function RecordingsPage() {
                         <p className="text-sm text-red-500 mt-3">
                           文字起こしがありません。先に再処理を実行してください。
                         </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Circlebackタブ */}
+              {modalTab === 'circleback' && (
+                <div>
+                  {selectedRecording.circlebackSyncedAt ? (
+                    <div className="space-y-4">
+                      {/* 同期日時 */}
+                      <div className="flex items-center gap-2 text-sm text-gray-500 bg-purple-50 px-3 py-2 rounded-lg">
+                        <CheckCircle className="h-4 w-4 text-green-500" />
+                        <span>
+                          {format(new Date(selectedRecording.circlebackSyncedAt), 'yyyy年M月d日 HH:mm', { locale: ja })} に同期済み
+                        </span>
+                      </div>
+
+                      {/* アクションアイテム */}
+                      {selectedRecording.circlebackActionItems && selectedRecording.circlebackActionItems.length > 0 && (
+                        <div>
+                          <h4 className="text-sm font-medium text-gray-700 mb-2 flex items-center gap-1">
+                            <ListChecks className="h-4 w-4" />
+                            アクションアイテム ({selectedRecording.circlebackActionItems.length}件)
+                          </h4>
+                          <ul className="space-y-2">
+                            {selectedRecording.circlebackActionItems.map((item, index) => (
+                              <li key={index} className="flex items-start gap-2 bg-yellow-50 p-3 rounded-lg">
+                                <CheckCircle className="h-4 w-4 text-yellow-600 mt-0.5 flex-shrink-0" />
+                                <div>
+                                  <span className="text-sm text-gray-700">{item.text}</span>
+                                  {item.assignee && (
+                                    <span className="text-xs text-gray-500 ml-2">
+                                      担当: {item.assignee}
+                                    </span>
+                                  )}
+                                </div>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+
+                      {/* 議事録ノート */}
+                      {selectedRecording.circlebackNotes && (
+                        <div>
+                          <h4 className="text-sm font-medium text-gray-700 mb-2 flex items-center gap-1">
+                            <FileText className="h-4 w-4" />
+                            議事録ノート
+                          </h4>
+                          <div className="prose prose-sm max-w-none">
+                            <pre className="whitespace-pre-wrap font-sans text-sm text-gray-700 bg-gray-50 p-3 sm:p-4 rounded-lg leading-relaxed max-h-[50vh] overflow-y-auto">
+                              {selectedRecording.circlebackNotes}
+                            </pre>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* 録画URL */}
+                      {selectedRecording.circlebackRecordingUrl && (
+                        <div>
+                          <a
+                            href={selectedRecording.circlebackRecordingUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-2 text-sm text-purple-600 hover:text-purple-700"
+                          >
+                            <ExternalLink className="h-4 w-4" />
+                            Circlebackで録画を見る
+                          </a>
+                          <p className="text-xs text-gray-400 mt-1">
+                            ※ 録画URLは24時間で期限切れになります
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="text-center py-8">
+                      <CircleDot className="h-12 w-12 mx-auto text-gray-300 mb-4" />
+                      <p className="text-gray-600 mb-2">Circlebackデータはまだありません</p>
+                      <p className="text-sm text-gray-400">
+                        Circlebackで処理されると、議事録やアクションアイテムがここに表示されます。
+                      </p>
+                      {selectedRecording.status === 'WAITING_CIRCLEBACK' && (
+                        <div className="mt-4 flex items-center justify-center gap-2 text-purple-600">
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          <span className="text-sm">Circlebackからのデータを待っています...</span>
+                        </div>
                       )}
                     </div>
                   )}

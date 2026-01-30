@@ -58,6 +58,13 @@ export interface Recording {
   detailedSummary: string | null;
   detailedSummaryStatus: string | null;  // GENERATING, COMPLETED, FAILED
   reportSentAt: string | null;  // 報告書送付日時
+  // Circleback連携
+  circlebackMeetingId: string | null;
+  circlebackNotes: string | null;
+  circlebackActionItems: { text: string; assignee?: string }[] | null;
+  circlebackRecordingUrl: string | null;
+  circlebackSyncedAt: string | null;
+  // 外部連携ステータス
   youtubeSuccess: boolean | null;
   sheetsSuccess: boolean | null;
   notionSuccess: boolean | null;
